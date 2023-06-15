@@ -12,19 +12,6 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn lex(&mut self) -> Vec<Token> {
-        let mut tokens = Vec::new();
-
-        loop {
-            let token = self.next_token();
-            match token {
-                Token::EOF => break,
-                any => tokens.push(any)
-            }
-        }
-        return tokens;
-    }
-
     fn next_token(&mut self) -> Token {
         if let Some(ch) = self.source.peek() {
             match ch {
@@ -109,14 +96,24 @@ impl<'a> Lexer<'a> {
     }
 
     fn maybe_arrow(&mut self) -> Token {
-        let asdf = self.source.next();
-        println!("{:?}", asdf);
+        self.source.next();
         match self.source.peek() {
             Some('>') => {
                 self.source.next();
                 Token::Arrow
             },
             _ => Token::BiOp('-')
+        }
+    }
+}
+
+impl Iterator for Lexer<'_> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.next_token() {
+            Token::EOF => None,
+            token => Some(token)
         }
     }
 }
@@ -191,9 +188,9 @@ mod test {
     #[test]
     fn lex_let_expression() -> Result<()> {
         let source: String = "let name = \"purpura\";".into();
-        let mut lexer = Lexer::new(&source);
+        let lexer = Lexer::new(&source);
 
-        let tokens = lexer.lex();
+        let tokens: Vec<Token> = lexer.into_iter().collect();
 
         let expected_tokens = vec![
             Token::Identifier("let".into()),
