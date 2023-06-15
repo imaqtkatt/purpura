@@ -17,8 +17,8 @@ impl<'a> Lexer<'a> {
             match ch {
                 '\0' | ' ' | '\t' | '\n' | '\r' => self.skip(),
                 '"' => self.read_string(),
-                '=' => self.single(Token::Equal),
-                '!' => self.single(Token::Bang),
+                '=' => self.read_equal(),
+                '!' => self.read_bang(),
                 '(' => self.single(Token::LeftParenthesis),
                 ')' => self.single(Token::RightParenthesis),
                 '{' => self.single(Token::LeftBrace),
@@ -98,11 +98,25 @@ impl<'a> Lexer<'a> {
     fn maybe_arrow(&mut self) -> Token {
         self.source.next();
         match self.source.peek() {
-            Some('>') => {
-                self.source.next();
-                Token::Arrow
-            },
+            Some('>') => self.single(Token::Arrow),
             _ => Token::BiOp('-')
+        }
+    }
+
+    fn read_equal(&mut self) -> Token {
+        self.source.next();
+        match self.source.peek() {
+            Some('=') => self.single(Token::EqualEqual),
+            Some('>') => self.single(Token::FatArrow),
+            _ => Token::Equal
+        }
+    }
+
+    fn read_bang(&mut self) -> Token {
+        self.source.next();
+        match self.source.peek() {
+            Some('=') => self.single(Token::NotEqual),
+            _ => Token::Bang
         }
     }
 }
@@ -167,6 +181,111 @@ mod test {
         let expected_token = Token::Arrow;
 
         assert_eq!(maybe_arrow, expected_token);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_equal() -> Result<()> {
+        let source: String = "=".into();
+
+        let mut lexer = Lexer::new(&source);
+        let equal = lexer.read_equal();
+
+        let expected_token = Token::Equal;
+
+        assert_eq!(equal, expected_token);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_equal_equal() -> Result<()> {
+        let source: String = "==".into();
+
+        let mut lexer = Lexer::new(&source);
+        let equal_equal = lexer.read_equal();
+
+        let expected_token = Token::EqualEqual;
+
+        assert_eq!(equal_equal, expected_token);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_fat_arrow() -> Result<()> {
+        let source: String = "=>".into();
+
+        let mut lexer = Lexer::new(&source);
+        let fat_arrow = lexer.read_equal();
+
+        let expected_token = Token::FatArrow;
+
+        assert_eq!(fat_arrow, expected_token);
+
+        Ok(())
+    }
+
+    #[test]
+    fn reads_equals() -> Result<()> {
+        let source: String = "= == =>".into();
+
+        let lexer = Lexer::new(&source);
+        let tokens: Vec<Token> = lexer.into_iter().collect();
+
+        let expected_tokens = vec![
+            Token::Equal,
+            Token::EqualEqual,
+            Token::FatArrow
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_bang() -> Result<()> {
+        let source: String = "!".into();
+
+        let mut lexer = Lexer::new(&source);
+        let bang = lexer.read_bang();
+
+        let expected_token = Token::Bang;
+
+        assert_eq!(bang, expected_token);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_not_equal() -> Result<()> {
+        let source: String = "!=".into();
+
+        let mut lexer = Lexer::new(&source);
+        let not_equal = lexer.read_bang();
+
+        let expected_token = Token::NotEqual;
+
+        assert_eq!(not_equal, expected_token);
+
+        Ok(())
+    }
+
+    #[test]
+    fn reads_bang() -> Result<()> {
+        let source: String = "! !=".into();
+
+        let lexer = Lexer::new(&source);
+        let tokens: Vec<Token> = lexer.into_iter().collect();
+        
+        let expected_tokens = vec![
+            Token::Bang,
+            Token::NotEqual
+        ];
+
+        assert_eq!(tokens, expected_tokens);
 
         Ok(())
     }
