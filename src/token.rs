@@ -3,6 +3,9 @@
 pub enum Token {
     Identifier(String),
     Number(String),
+    Fn,
+    Let,
+    Match,
     Equal,
     EqualEqual,
     FatArrow,

@@ -59,10 +59,15 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_identifier(&mut self) -> Token {
-        let indentifier = self.read_while(|c| {
+        let identifier = self.read_while(|c| {
             c.is_ascii_alphabetic()
         });
-        Token::Identifier(indentifier)
+        match identifier.as_ref() {
+            "fn" => Token::Fn,
+            "let" => Token::Let,
+            "match" => Token::Match,
+            _ => Token::Identifier(identifier)
+        }
     }
 
     fn read_number(&mut self) -> Token {
@@ -305,18 +310,68 @@ mod test {
     }
 
     #[test]
-    fn lex_let_expression() -> Result<()> {
+    fn reads_identifiers() -> Result<()> {
+        let source: String = "fn let match".into();
+
+        let lexer = Lexer::new(&source);
+        let tokens: Vec<Token> = lexer.into_iter().collect();
+
+        let expected_tokens = vec![
+            Token::Fn,
+            Token::Let,
+            Token::Match
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+
+        Ok(())
+    }
+
+    #[test]
+    fn purpura_let_expression() -> Result<()> {
         let source: String = "let name = \"purpura\";".into();
         let lexer = Lexer::new(&source);
 
         let tokens: Vec<Token> = lexer.into_iter().collect();
 
         let expected_tokens = vec![
-            Token::Identifier("let".into()),
+            Token::Let,
             Token::Identifier("name".into()),
             Token::Equal,
             Token::String("purpura".into()),
             Token::Semicolon
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+
+        Ok(())
+    }
+
+    #[test]
+    fn purpura_match_expression() -> Result<()> {
+        let source: String = r#"
+        match num {
+        | 1 => 2
+        | x => 0
+        }
+        "#.into();
+
+        let lexer = Lexer::new(&source);
+        let tokens: Vec<Token> = lexer.into_iter().collect();
+
+        let expected_tokens = vec![
+            Token::Match,
+            Token::Identifier("num".into()),
+            Token::LeftBrace,
+            Token::Pipe,
+            Token::Number("1".into()),
+            Token::FatArrow,
+            Token::Number("2".into()),
+            Token::Pipe,
+            Token::Identifier("x".into()),
+            Token::FatArrow,
+            Token::Number("0".into()),
+            Token::RightBrace
         ];
 
         assert_eq!(tokens, expected_tokens);
