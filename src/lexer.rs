@@ -60,9 +60,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_identifier(&mut self) -> Token {
-        let identifier = self.read_while(|c| {
-            c.is_ascii_alphabetic()
-        });
+        let identifier = self.read_while(|c| c.is_ascii_alphabetic());
         match identifier.as_ref() {
             "fn" => Token::Fn,
             "let" => Token::Let,
