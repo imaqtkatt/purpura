@@ -23,8 +23,8 @@ impl<'a> Lexer<'a> {
                 ')' => self.single(Token::RightParenthesis),
                 '{' => self.single(Token::LeftBrace),
                 '}' => self.single(Token::RightBrace),
-                '<' => self.single(Token::LessThan),
-                '>' => self.single(Token::GreaterThan),
+                '<' => self.read_less_equal(),
+                '>' => self.read_greater_equal(),
                 '.' => self.single(Token::Dot),
                 ',' => self.single(Token::Comma),
                 ';' => self.single(Token::Semicolon),
@@ -66,6 +66,8 @@ impl<'a> Lexer<'a> {
             "fn" => Token::Fn,
             "let" => Token::Let,
             "match" => Token::Match,
+            "spec" => Token::Spec,
+            "data" => Token::Data,
             _ => Token::Identifier(identifier)
         }
     }
@@ -122,6 +124,22 @@ impl<'a> Lexer<'a> {
         match self.source.peek() {
             Some('=') => self.single(Token::NotEqual),
             _ => Token::Bang
+        }
+    }
+
+    fn read_less_equal(&mut self) -> Token {
+        self.source.next();
+        match self.source.peek() {
+            Some('=') => self.single(Token::LessEqual),
+            _ => Token::LessThan
+        }
+    }
+
+    fn read_greater_equal(&mut self) -> Token {
+        self.source.next();
+        match self.source.peek() {
+            Some('=') => self.single(Token::GreaterEqual),
+            _ => Token::GreaterThan
         }
     }
 }
@@ -219,6 +237,40 @@ mod test {
     }
 
     #[test]
+    fn reads_greater_equal() -> Result<()> {
+        let source: String = "> >=".into();
+
+        let lexer = Lexer::new(&source);
+        let tokens: Vec<Token> = lexer.into_iter().collect();
+
+        let expected_tokens = vec![
+            Token::GreaterThan,
+            Token::GreaterEqual
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+
+        Ok(())
+    }
+
+    #[test]
+    fn reads_less_equal() -> Result<()> {
+        let source: String = "< <=".into();
+
+        let lexer = Lexer::new(&source);
+        let tokens:Vec<Token> = lexer.into_iter().collect();
+
+        let expected_tokens = vec![
+            Token::LessThan,
+            Token::LessEqual
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+
+        Ok(())
+    }
+
+    #[test]
     fn read_fat_arrow() -> Result<()> {
         let source: String = "=>".into();
 
@@ -311,7 +363,7 @@ mod test {
 
     #[test]
     fn reads_identifiers() -> Result<()> {
-        let source: String = "fn let match".into();
+        let source: String = "fn let match spec data".into();
 
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.into_iter().collect();
@@ -319,7 +371,9 @@ mod test {
         let expected_tokens = vec![
             Token::Fn,
             Token::Let,
-            Token::Match
+            Token::Match,
+            Token::Spec,
+            Token::Data
         ];
 
         assert_eq!(tokens, expected_tokens);
