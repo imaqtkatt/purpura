@@ -29,5 +29,6 @@ pub enum Token {
     RightBrace,
     String(String),
     Unexpected(String),
+    Comment(String),
     EOF
 }

@@ -33,6 +33,7 @@ impl<'a> Lexer<'a> {
                 '/' => self.single(Token::BiOp('/')),
                 '+' => self.single(Token::BiOp('+')),
                 '-' => self.maybe_arrow(),
+                '#' => self.read_comment(),
                 ch => {
                     if ch.is_alphabetic() {
                         return self.read_identifier();
@@ -140,6 +141,21 @@ impl<'a> Lexer<'a> {
         match self.source.peek() {
             Some('=') => self.single(Token::GreaterEqual),
             _ => Token::GreaterThan
+        }
+    }
+
+    fn read_comment(&mut self) -> Token {
+        self.source.next();
+        match self.source.peek() {
+            Some('[') => {
+                self.source.next();
+                let comment = self.read_while(|c| c != ']');
+                Token::Comment(comment)
+            }
+            _ => {
+                let comment = self.read_while(|c| c != '\n');
+                Token::Comment(comment)
+            }
         }
     }
 }
@@ -357,6 +373,74 @@ mod test {
         let expected_token = Token::BiOp('-');
 
         assert_eq!(maybe_arrow, expected_token);
+
+        Ok(())
+    }
+
+
+    #[test]
+    fn read_single_line_comment() -> Result<()> {
+        let source: String = r#"
+        # this is a comment
+        # this is another comment
+        42
+        "#.into();
+
+        let lexer = Lexer::new(&source);
+        let tokens: Vec<Token> = lexer.into_iter().collect();
+
+        let expected_tokens = vec![
+            Token::Comment(" this is a comment".into()),
+            Token::Comment(" this is another comment".into()),
+            Token::Number("42".into())
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_multi_line_comment() -> Result<()> {
+        let source: String = r#"
+        #[ big
+        comment
+        ]
+        "#.into();
+
+        let lexer = Lexer::new(&source);
+        let tokens: Vec<Token> = lexer.into_iter().collect();
+
+        let expected_tokens = vec![
+            Token::Comment(" big\n        comment\n        ".into())
+        ];
+
+        assert_eq!(tokens, expected_tokens);
+
+        Ok(())
+    }
+
+    #[test]
+    fn reads_comments_and_other_tokens() -> Result<()> {
+        let source: String = r#"
+        # foo
+        let x = 42
+        #[ bar ]
+        "#.into();
+
+        let lexer = Lexer::new(&source);
+        let tokens: Vec<Token> = lexer.into_iter().collect();
+
+        let expected_tokens = vec![
+            Token::Comment(" foo".into()),
+            Token::Let,
+            Token::Identifier("x".into()),
+            Token::Equal,
+            Token::Number("42".into()),
+            Token::Comment(" bar ".into())
+        ];
+
+        assert_eq!(tokens, expected_tokens);
 
         Ok(())
     }
