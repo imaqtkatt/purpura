@@ -12,5 +12,8 @@ pub enum Operator {
     Div,
     Sum,
     Min,
-
+    Greater,
+    Lesser,
+    And,
+    Or,
 }

@@ -1,6 +1,11 @@
-use std::array::from_ref;
-
 use crate::{lexer::Lexer, token::Token, expr::{Expr, Operator}};
+
+const PRECEDENCE_TABLE: &'static [[Token; 2]; 4] = &[
+    [Token::AndAnd, Token::Pipe],
+    [Token::GreaterThan, Token::LessThan],
+    [Token::Plus, Token::Minus],
+    [Token::Mul, Token::Div],
+];
 
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
@@ -53,13 +58,34 @@ impl<'a> Parser<'a> {
         literal
     }
 
-    fn parse_bi_op(&mut self) -> Result<Expr, String> {
-        let mut left = self.parse_literal()?;
+    fn parse_operator(&mut self) -> Result<Operator, String> {
+        let operator = match self.current {
+            Some(Token::Mul) => Ok(Operator::Mul),
+            Some(Token::Div) => Ok(Operator::Div),
+            Some(Token::Plus) => Ok(Operator::Sum),
+            Some(Token::Minus) => Ok(Operator::Min),
+            Some(Token::GreaterThan) => Ok(Operator::Greater),
+            Some(Token::LessThan) => Ok(Operator::Lesser),
+            Some(Token::PipePipe) => Ok(Operator::Or),
+            Some(Token::AndAnd) => Ok(Operator::And),
+            _ => Err("Expected operator".into()),
+        };
+        self.advance();
+        operator
+    }
 
-        while self.current == Some(Token::Plus) {
-            self.advance();
-            let right = self.parse_literal()?;
-            left = Expr::BiOp(Operator::Sum, Box::new(left), Box::new(right));
+    fn parse_bi_op(&mut self, precedence: usize) -> Result<Expr, String> {
+        if precedence > PRECEDENCE_TABLE.len() - 1 {
+            return self.parse_literal();
+        }
+        // println!("{:?}", precedence);
+        let mut left = self.parse_bi_op(precedence + 1)?;
+        // println!("{:?}", left);
+        // println!("{:?}", self.current.as_ref());
+        while PRECEDENCE_TABLE[precedence].iter().any(|a| self.current.as_ref().eq(&Some(a))) {
+            let operator = self.parse_operator()?;
+            let right = self.parse_bi_op(precedence + 1)?;
+            left = Expr::BiOp(operator, Box::new(left), Box::new(right))
         }
 
         Ok(left)
@@ -107,12 +133,52 @@ mod test {
         let source: String = "0 + 1".into();
 
         let mut parser = Parser::new(&source);
-        let bi_op = parser.parse_bi_op();
+        let bi_op = parser.parse_bi_op(0);
 
         let expected = Expr::BiOp(
             Operator::Sum,
             Box::new(Expr::Number(0)),
             Box::new(Expr::Number(1))
+        );
+
+        assert_eq!(bi_op, Ok(expected));
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_greater_bi_op() -> Result<()> {
+        let source: String = "1 > 1".into();
+
+        let mut parser = Parser::new(&source);
+        let bi_op = parser.parse_bi_op(0);
+
+        let expected = Expr::BiOp(
+            Operator::Greater,
+            Box::new(Expr::Number(1)),
+            Box::new(Expr::Number(1)),
+        );
+
+        assert_eq!(bi_op, Ok(expected));
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_sum_mul_bi_op() -> Result<()> {
+        let source: String = "1 + 1 * 2".into();
+
+        let mut parser = Parser::new(&source);
+        let bi_op = parser.parse_bi_op(0);
+
+        let expected = Expr::BiOp(
+            Operator::Sum,
+            Box::new(Expr::Number(1)),
+            Box::new(Expr::BiOp(
+                Operator::Mul,
+                Box::new(Expr::Number(1)),
+                Box::new(Expr::Number(2)),
+            ))
         );
 
         assert_eq!(bi_op, Ok(expected));
