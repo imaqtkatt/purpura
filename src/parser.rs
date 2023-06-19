@@ -104,17 +104,23 @@ impl<'a> Parser<'a> {
     pub fn call(&mut self) -> Result<Expr> {
         let mut args = Vec::new();
         let callee = self.primary()?;
-        while self.current.is_identifier()
-            || self.current.is_number()
-            || self.is(Token::LeftParenthesis)
-        {
-            args.push(self.primary()?);
-        }
+        if self.is(Token::LeftParenthesis) {
+            self.advance();
 
-        if args.is_empty() {
-            Ok(callee)
-        } else {
+            while !self.is(Token::RightParenthesis) {
+                args.push(self.expr()?);
+                if self.is(Token::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+
+            self.expect(Token::RightParenthesis)?;
+
             Ok(Expr::Application(Box::new(callee), args))
+        } else {
+            Ok(callee)
         }
     }
 
@@ -249,6 +255,25 @@ mod test {
 
         assert_eq!(bi_op, Ok(expected));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_call_and_lambda() -> Result<()> {
+        let source: String = "|x| x(y,z)".into();
+
+        let mut parser = Parser::new(&source);
+        let call = parser.expr();
+
+        let expected = Expr::Lambda(
+            "x".into(),
+            Box::new(Expr::Application(
+                Box::new(Expr::Identifier("x".into())),
+                vec![Expr::Identifier("y".into()), Expr::Identifier("z".into())],
+            )),
+        );
+
+        assert_eq!(call, Ok(expected));
         Ok(())
     }
 }
