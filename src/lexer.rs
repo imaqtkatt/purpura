@@ -30,9 +30,9 @@ impl<'a> Lexer<'a> {
     fn read_while(&mut self, predicate: fn(char) -> bool) -> String {
         let mut string = String::new();
 
-        for ch in self.source.by_ref() {
-            if predicate(ch) {
-                string.push(ch);
+        while let Some(ch) = self.source.peek() {
+            if predicate(*ch) {
+                string.push(self.source.next().unwrap());
             } else {
                 break;
             }
@@ -66,6 +66,7 @@ impl<'a> Lexer<'a> {
     fn read_string(&mut self) -> Token {
         self.source.next(); // ignore first quote "
         let string = self.read_while(ne_quote);
+        self.source.next();
         Token::String(string)
     }
 
@@ -116,6 +117,7 @@ impl<'a> Lexer<'a> {
             Some('[') => {
                 self.source.next();
                 let comment = self.read_while(|c| c != ']');
+                self.source.next();
                 Token::Comment(comment)
             }
             _ => {
@@ -534,14 +536,19 @@ mod test {
     }
 
     #[test]
-    fn dasdas() -> Result<()> {
-        let source: String = "|x|".into();
-        let lexer = Lexer::new(&source);
+    fn read_lambda() -> Result<()> {
+        let source: String = "|x| x".into();
 
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = Lexer::new(&source).collect();
 
-        println!("Tokens: {:?}", tokens);
+        let expected_tokens = vec![
+            Token::Pipe,
+            Token::Identifier("x".into()),
+            Token::Pipe,
+            Token::Identifier("x".into())
+        ];
 
+        assert_eq!(tokens, expected_tokens);
         Ok(())
     }
 
