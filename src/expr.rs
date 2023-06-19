@@ -1,9 +1,10 @@
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
-    Number(usize),
+    Number(u64),
     Identifier(String),
-    BiOp(Operator, Box<Expr>, Box<Expr>)
+    Binary(Operator, Box<Expr>, Box<Expr>),
+    Lambda(String, Box<Expr>),
+    Application(Box<Expr>, Vec<Expr>),
 }
 
 #[derive(Debug, PartialEq, Eq)]

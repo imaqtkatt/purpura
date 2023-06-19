@@ -1,7 +1,4 @@
-mod lexer;
-mod token;
-mod parser;
-mod expr;
+pub use purpura::lexer;
 
 fn main() -> std::io::Result<()> {
     Ok(())

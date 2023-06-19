@@ -1,94 +1,160 @@
-use crate::{lexer::Lexer, token::Token, expr::{Expr, Operator}};
+//! Parser for the purpura language, the main structure of this module is the [Parser] that turns a
+//! stream of tokens into a tree.
 
-const PRECEDENCE_TABLE: &'static [[Token; 2]; 4] = &[
-    [Token::AndAnd, Token::Pipe],
-    [Token::GreaterThan, Token::LessThan],
-    [Token::Plus, Token::Minus],
-    [Token::Mul, Token::Div],
+use crate::{
+    expr::{Expr, Operator},
+    lexer::Lexer,
+    token::Token,
+};
+
+type Result<T> = std::result::Result<T, String>;
+
+const PRECEDENCE_TABLE: &[&[Token]] = &[
+    &[Token::AndAnd, Token::Pipe],
+    &[Token::GreaterThan, Token::LessThan],
+    &[Token::Plus, Token::Minus],
+    &[Token::Mul, Token::Div],
 ];
 
+/// This is the parser of the purpura language, it takes a stream of tokens and turns it into a
+/// tree.
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
-    current: Option<Token>,
-    next: Option<Token>,
+    current: Token,
+    next: Token,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a String) -> Self {
+    pub fn new(source: &'a str) -> Self {
         let mut lexer = Lexer::new(source);
 
         let current = lexer.next();
         let next = lexer.next();
-        
+
         Self {
             lexer,
-            current,
-            next,
+            current: current.unwrap_or(Token::EOF),
+            next: next.unwrap_or(Token::EOF),
         }
     }
 
-    fn advance(&mut self) -> Option<Token> {
-        let mut ret = self.lexer.next();
+    fn is(&self, token: Token) -> bool {
+        self.current == token
+    }
+
+    fn advance(&mut self) -> Token {
+        let mut ret = self.lexer.next().unwrap_or(Token::EOF);
         std::mem::swap(&mut self.next, &mut self.current);
         std::mem::swap(&mut self.next, &mut ret);
         ret
     }
 
-    pub fn expect(&mut self, expected: Token) -> Result<Option<Token>, String> {
-        match self.current.as_ref() {
-            Some(a) if *a == expected => Ok(self.advance()),
-            a => Err(format!("Unexpected '{:?}'", a))
+    fn expect(&mut self, expected: Token) -> Result<Token> {
+        match &self.current {
+            a if *a == expected => Ok(self.advance()),
+            _ => Err(format!("Expected {:?}, got {:?}", expected, self.current)),
         }
     }
 
-    fn parse_literal(&mut self) -> Result<Expr, String> {
-        let literal = match self.current.as_ref() {
-            Some(Token::Identifier(s)) => {
-                Ok(Expr::Identifier(String::clone(s)))
-            },
-            Some(Token::Number(string_number)) => {
-                match string_number.parse::<usize>() {
-                    Ok(num) => Ok(Expr::Number(num)),
-                    _ => Err(format!("Could not read {:?} as number", string_number))
-                }
+    fn expect_identifier(&mut self) -> Result<String> {
+        match &self.current {
+            Token::Identifier(str) => {
+                let str = str.clone();
+                self.advance();
+                Ok(str)
             }
-            _ => panic!("Expected a literal")
+            _ => Err(format!("Expected identifier, got {:?}", self.current)),
+        }
+    }
+}
+
+impl<'a> Parser<'a> {
+    fn primary(&mut self) -> Result<Expr> {
+        let literal = match &self.current {
+            Token::Identifier(str) => Ok(Expr::Identifier(str.clone())),
+            Token::Number(num) => Ok(Expr::Number(*num)),
+            Token::LeftParenthesis => {
+                self.advance();
+                let expr = self.expr()?;
+                self.expect(Token::RightParenthesis)?;
+                return Ok(expr);
+            }
+            _ => Err(format!("Expected a literal, got {:?}", self.current)),
         };
         self.advance();
         literal
     }
 
-    fn parse_operator(&mut self) -> Result<Operator, String> {
+    fn operator(&mut self) -> Result<Operator> {
         let operator = match self.current {
-            Some(Token::Mul) => Ok(Operator::Mul),
-            Some(Token::Div) => Ok(Operator::Div),
-            Some(Token::Plus) => Ok(Operator::Sum),
-            Some(Token::Minus) => Ok(Operator::Min),
-            Some(Token::GreaterThan) => Ok(Operator::Greater),
-            Some(Token::LessThan) => Ok(Operator::Lesser),
-            Some(Token::PipePipe) => Ok(Operator::Or),
-            Some(Token::AndAnd) => Ok(Operator::And),
+            Token::Mul => Ok(Operator::Mul),
+            Token::Div => Ok(Operator::Div),
+            Token::Plus => Ok(Operator::Sum),
+            Token::Minus => Ok(Operator::Min),
+            Token::GreaterThan => Ok(Operator::Greater),
+            Token::LessThan => Ok(Operator::Lesser),
+            Token::PipePipe => Ok(Operator::Or),
+            Token::AndAnd => Ok(Operator::And),
             _ => Err("Expected operator".into()),
         };
         self.advance();
         operator
     }
 
-    fn parse_bi_op(&mut self, precedence: usize) -> Result<Expr, String> {
-        if precedence > PRECEDENCE_TABLE.len() - 1 {
-            return self.parse_literal();
+    pub fn call(&mut self) -> Result<Expr> {
+        let mut args = Vec::new();
+        let callee = self.primary()?;
+        while self.current.is_identifier()
+            || self.current.is_number()
+            || self.is(Token::LeftParenthesis)
+        {
+            args.push(self.primary()?);
         }
-        // println!("{:?}", precedence);
-        let mut left = self.parse_bi_op(precedence + 1)?;
-        // println!("{:?}", left);
-        // println!("{:?}", self.current.as_ref());
-        while PRECEDENCE_TABLE[precedence].iter().any(|a| self.current.as_ref().eq(&Some(a))) {
-            let operator = self.parse_operator()?;
-            let right = self.parse_bi_op(precedence + 1)?;
-            left = Expr::BiOp(operator, Box::new(left), Box::new(right))
+
+        if args.is_empty() {
+            Ok(callee)
+        } else {
+            Ok(Expr::Application(Box::new(callee), args))
+        }
+    }
+
+    fn infix(&mut self, precedence: usize) -> Result<Expr> {
+        if precedence > PRECEDENCE_TABLE.len() - 1 {
+            return self.call();
+        }
+
+        let mut left = self.infix(precedence + 1)?;
+
+        while PRECEDENCE_TABLE[precedence]
+            .iter()
+            .any(|a| self.current == *a)
+        {
+            let operator = self.operator()?;
+            let right = self.infix(precedence + 1)?;
+            left = Expr::Binary(operator, Box::new(left), Box::new(right))
         }
 
         Ok(left)
+    }
+
+    pub fn lambda(&mut self) -> Result<Expr> {
+        self.expect(Token::Pipe)?;
+        let identifier = self.expect_identifier()?;
+        self.expect(Token::Pipe)?;
+        let body = self.expr()?;
+        Ok(Expr::Lambda(identifier, Box::new(body)))
+    }
+
+    pub fn expr(&mut self) -> Result<Expr> {
+        match self.current {
+            Token::Pipe => self.lambda(),
+            _ => self.infix(0),
+        }
+    }
+
+    /// Parses a program and returns the root of the tree.
+    pub fn parse(&mut self) -> Result<Expr> {
+        self.expr()
     }
 }
 
@@ -105,7 +171,7 @@ mod test {
         let source: String = "foo".into();
 
         let mut parser = Parser::new(&source);
-        let identifier = parser.parse_literal();
+        let identifier = parser.primary();
 
         let expected = Ok(Expr::Identifier("foo".into()));
 
@@ -119,7 +185,7 @@ mod test {
         let source: String = "42".into();
 
         let mut parser = Parser::new(&source);
-        let number_literal = parser.parse_literal();
+        let number_literal = parser.primary();
 
         let expected = Ok(Expr::Number(42));
 
@@ -133,12 +199,12 @@ mod test {
         let source: String = "0 + 1".into();
 
         let mut parser = Parser::new(&source);
-        let bi_op = parser.parse_bi_op(0);
+        let bi_op = parser.infix(0);
 
-        let expected = Expr::BiOp(
+        let expected = Expr::Binary(
             Operator::Sum,
             Box::new(Expr::Number(0)),
-            Box::new(Expr::Number(1))
+            Box::new(Expr::Number(1)),
         );
 
         assert_eq!(bi_op, Ok(expected));
@@ -151,9 +217,9 @@ mod test {
         let source: String = "1 > 1".into();
 
         let mut parser = Parser::new(&source);
-        let bi_op = parser.parse_bi_op(0);
+        let bi_op = parser.infix(0);
 
-        let expected = Expr::BiOp(
+        let expected = Expr::Binary(
             Operator::Greater,
             Box::new(Expr::Number(1)),
             Box::new(Expr::Number(1)),
@@ -169,16 +235,16 @@ mod test {
         let source: String = "1 + 1 * 2".into();
 
         let mut parser = Parser::new(&source);
-        let bi_op = parser.parse_bi_op(0);
+        let bi_op = parser.infix(0);
 
-        let expected = Expr::BiOp(
+        let expected = Expr::Binary(
             Operator::Sum,
             Box::new(Expr::Number(1)),
-            Box::new(Expr::BiOp(
+            Box::new(Expr::Binary(
                 Operator::Mul,
                 Box::new(Expr::Number(1)),
                 Box::new(Expr::Number(2)),
-            ))
+            )),
         );
 
         assert_eq!(bi_op, Ok(expected));

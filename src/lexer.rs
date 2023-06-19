@@ -1,52 +1,19 @@
-use std::{iter::Peekable, str::Chars};
-use crate::token::Token;
+//! Module for the lexer for the purpura language. This module gets a source code as a String and
+//! uses it to split the source code into tokens. The tokens are then used by the parser to build
+//! a tree.
 
+use crate::token::Token;
+use std::{iter::Peekable, str::Chars};
+
+/// The main structure of the module. It is an iterator of tokens.
 pub struct Lexer<'a> {
     source: Peekable<Chars<'a>>,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a String) -> Lexer<'a> {
+    pub fn new(source: &'a str) -> Lexer<'a> {
         Lexer {
             source: source.chars().peekable(),
-        }
-    }
-
-    fn next_token(&mut self) -> Token {
-        if let Some(ch) = self.source.peek() {
-            match ch {
-                '\0' | ' ' | '\t' | '\n' | '\r' => self.skip(),
-                '"' => self.read_string(),
-                '=' => self.read_equal(),
-                '!' => self.read_bang(),
-                '(' => self.single(Token::LeftParenthesis),
-                ')' => self.single(Token::RightParenthesis),
-                '{' => self.single(Token::LeftBrace),
-                '}' => self.single(Token::RightBrace),
-                '<' => self.read_less_equal(),
-                '>' => self.read_greater_equal(),
-                '.' => self.single(Token::Dot),
-                ',' => self.single(Token::Comma),
-                ';' => self.single(Token::Semicolon),
-                '|' => self.read_pipe(),
-                '&' => self.read_and(),
-                '*' => self.single(Token::Mul),
-                '/' => self.single(Token::Div),
-                '+' => self.single(Token::Plus),
-                '-' => self.maybe_arrow(),
-                '#' => self.read_comment(),
-                ch => {
-                    if ch.is_alphabetic() {
-                        return self.read_identifier();
-                    } else if ch.is_numeric() {
-                        return self.read_number();
-                    } else {
-                        return self.read_unexpected();
-                    }
-                }
-            }
-        } else {
-            Token::EOF
         }
     }
 
@@ -60,6 +27,20 @@ impl<'a> Lexer<'a> {
         self.next_token()
     }
 
+    fn read_while(&mut self, predicate: fn(char) -> bool) -> String {
+        let mut string = String::new();
+
+        for ch in self.source.by_ref() {
+            if predicate(ch) {
+                string.push(ch);
+            } else {
+                break;
+            }
+        }
+
+        string
+    }
+
     fn read_identifier(&mut self) -> Token {
         let identifier = self.read_while(|c| c.is_ascii_alphabetic());
         match identifier.as_ref() {
@@ -68,13 +49,13 @@ impl<'a> Lexer<'a> {
             "match" => Token::Match,
             "spec" => Token::Spec,
             "data" => Token::Data,
-            _ => Token::Identifier(identifier)
+            _ => Token::Identifier(identifier),
         }
     }
 
     fn read_number(&mut self) -> Token {
         let number = self.read_while(char::is_numeric);
-        Token::Number(number)
+        Token::Number(number.parse::<u64>().unwrap())
     }
 
     fn read_unexpected(&mut self) -> Token {
@@ -88,25 +69,11 @@ impl<'a> Lexer<'a> {
         Token::String(string)
     }
 
-    fn read_while(&mut self, predicate: fn(char) -> bool) -> String {
-        let mut string = String::new();
-
-        while let Some(ch) = self.source.next() {
-            if predicate(ch) {
-                string.push(ch);
-            } else {
-                break;
-            }
-        }
-
-        return string;
-    }
-
     fn maybe_arrow(&mut self) -> Token {
         self.source.next();
         match self.source.peek() {
             Some('>') => self.single(Token::Arrow),
-            _ => Token::Minus
+            _ => Token::Minus,
         }
     }
 
@@ -115,7 +82,7 @@ impl<'a> Lexer<'a> {
         match self.source.peek() {
             Some('=') => self.single(Token::EqualEqual),
             Some('>') => self.single(Token::FatArrow),
-            _ => Token::Equal
+            _ => Token::Equal,
         }
     }
 
@@ -123,7 +90,7 @@ impl<'a> Lexer<'a> {
         self.source.next();
         match self.source.peek() {
             Some('=') => self.single(Token::NotEqual),
-            _ => Token::Bang
+            _ => Token::Bang,
         }
     }
 
@@ -131,7 +98,7 @@ impl<'a> Lexer<'a> {
         self.source.next();
         match self.source.peek() {
             Some('=') => self.single(Token::LessEqual),
-            _ => Token::LessThan
+            _ => Token::LessThan,
         }
     }
 
@@ -139,7 +106,7 @@ impl<'a> Lexer<'a> {
         self.source.next();
         match self.source.peek() {
             Some('=') => self.single(Token::GreaterEqual),
-            _ => Token::GreaterThan
+            _ => Token::GreaterThan,
         }
     }
 
@@ -162,7 +129,7 @@ impl<'a> Lexer<'a> {
         self.source.next();
         match self.source.peek() {
             Some('|') => self.single(Token::PipePipe),
-            _ => Token::Pipe
+            _ => Token::Pipe,
         }
     }
 
@@ -171,7 +138,40 @@ impl<'a> Lexer<'a> {
         match self.source.peek() {
             Some('&') => self.single(Token::AndAnd),
             Some(c) => Token::Unexpected(c.to_string()),
-            None => Token::Unexpected("".into())
+            None => Token::Unexpected("".into()),
+        }
+    }
+
+    /// Reads a new token from the source code. It returns the next token and consumes it.
+    pub fn next_token(&mut self) -> Token {
+        if let Some(ch) = self.source.peek() {
+            match ch {
+                '\0' | ' ' | '\t' | '\n' | '\r' => self.skip(),
+                '"' => self.read_string(),
+                '=' => self.read_equal(),
+                '!' => self.read_bang(),
+                '(' => self.single(Token::LeftParenthesis),
+                ')' => self.single(Token::RightParenthesis),
+                '{' => self.single(Token::LeftBrace),
+                '}' => self.single(Token::RightBrace),
+                '<' => self.read_less_equal(),
+                '>' => self.read_greater_equal(),
+                '.' => self.single(Token::Dot),
+                ',' => self.single(Token::Comma),
+                ';' => self.single(Token::Semicolon),
+                '|' => self.read_pipe(),
+                '&' => self.read_and(),
+                '*' => self.single(Token::Mul),
+                '/' => self.single(Token::Div),
+                '+' => self.single(Token::Plus),
+                '-' => self.maybe_arrow(),
+                '#' => self.read_comment(),
+                ch if ch.is_alphabetic() => self.read_identifier(),
+                ch if ch.is_numeric() => self.read_number(),
+                _ => self.read_unexpected(),
+            }
+        } else {
+            Token::EOF
         }
     }
 }
@@ -182,7 +182,7 @@ impl Iterator for Lexer<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.next_token() {
             Token::EOF => None,
-            token => Some(token)
+            token => Some(token),
         }
     }
 }
@@ -275,10 +275,7 @@ mod test {
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.collect();
 
-        let expected_tokens = vec![
-            Token::GreaterThan,
-            Token::GreaterEqual
-        ];
+        let expected_tokens = vec![Token::GreaterThan, Token::GreaterEqual];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -290,12 +287,9 @@ mod test {
         let source: String = "< <=".into();
 
         let lexer = Lexer::new(&source);
-        let tokens:Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.collect();
 
-        let expected_tokens = vec![
-            Token::LessThan,
-            Token::LessEqual
-        ];
+        let expected_tokens = vec![Token::LessThan, Token::LessEqual];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -321,7 +315,7 @@ mod test {
         let source: String = "| ||".into();
 
         let mut lexer = Lexer::new(&source);
-        
+
         let pipe = lexer.next();
         let pipe_pipe = lexer.next();
 
@@ -335,12 +329,12 @@ mod test {
     #[test]
     fn read_and() -> Result<()> {
         let source: String = "& &&".into();
-        
+
         let mut lexer = Lexer::new(&source);
-        
+
         let and_unexpected = lexer.next();
         let and_and = lexer.next();
-        
+
         assert_eq!(and_unexpected, Some(Token::Unexpected(" ".into())));
         assert_eq!(and_and, Some(Token::AndAnd));
 
@@ -354,12 +348,7 @@ mod test {
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.collect();
 
-        let expected_tokens = vec![
-            Token::Mul,
-            Token::Plus,
-            Token::Minus,
-            Token::Div
-        ];
+        let expected_tokens = vec![Token::Mul, Token::Plus, Token::Minus, Token::Div];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -373,11 +362,7 @@ mod test {
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.collect();
 
-        let expected_tokens = vec![
-            Token::Equal,
-            Token::EqualEqual,
-            Token::FatArrow
-        ];
+        let expected_tokens = vec![Token::Equal, Token::EqualEqual, Token::FatArrow];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -418,11 +403,8 @@ mod test {
 
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.collect();
-        
-        let expected_tokens = vec![
-            Token::Bang,
-            Token::NotEqual
-        ];
+
+        let expected_tokens = vec![Token::Bang, Token::NotEqual];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -443,14 +425,14 @@ mod test {
         Ok(())
     }
 
-
     #[test]
     fn read_single_line_comment() -> Result<()> {
         let source: String = r#"
         # this is a comment
         # this is another comment
         42
-        "#.into();
+        "#
+        .into();
 
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.collect();
@@ -458,7 +440,7 @@ mod test {
         let expected_tokens = vec![
             Token::Comment(" this is a comment".into()),
             Token::Comment(" this is another comment".into()),
-            Token::Number("42".into())
+            Token::Number(42),
         ];
 
         assert_eq!(tokens, expected_tokens);
@@ -472,14 +454,13 @@ mod test {
         #[ big
         comment
         ]
-        "#.into();
+        "#
+        .into();
 
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.collect();
 
-        let expected_tokens = vec![
-            Token::Comment(" big\n        comment\n        ".into())
-        ];
+        let expected_tokens = vec![Token::Comment(" big\n        comment\n        ".into())];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -492,7 +473,8 @@ mod test {
         # foo
         let x = 42
         #[ bar ]
-        "#.into();
+        "#
+        .into();
 
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.collect();
@@ -502,8 +484,8 @@ mod test {
             Token::Let,
             Token::Identifier("x".into()),
             Token::Equal,
-            Token::Number("42".into()),
-            Token::Comment(" bar ".into())
+            Token::Number(42),
+            Token::Comment(" bar ".into()),
         ];
 
         assert_eq!(tokens, expected_tokens);
@@ -523,7 +505,7 @@ mod test {
             Token::Let,
             Token::Match,
             Token::Spec,
-            Token::Data
+            Token::Data,
         ];
 
         assert_eq!(tokens, expected_tokens);
@@ -543,10 +525,22 @@ mod test {
             Token::Identifier("name".into()),
             Token::Equal,
             Token::String("purpura".into()),
-            Token::Semicolon
+            Token::Semicolon,
         ];
 
         assert_eq!(tokens, expected_tokens);
+
+        Ok(())
+    }
+
+    #[test]
+    fn dasdas() -> Result<()> {
+        let source: String = "|x|".into();
+        let lexer = Lexer::new(&source);
+
+        let tokens: Vec<Token> = lexer.collect();
+
+        println!("Tokens: {:?}", tokens);
 
         Ok(())
     }
@@ -558,7 +552,8 @@ mod test {
         | 1 => 2
         | x => 0
         }
-        "#.into();
+        "#
+        .into();
 
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.collect();
@@ -568,14 +563,14 @@ mod test {
             Token::Identifier("num".into()),
             Token::LeftBrace,
             Token::Pipe,
-            Token::Number("1".into()),
+            Token::Number(1),
             Token::FatArrow,
-            Token::Number("2".into()),
+            Token::Number(2),
             Token::Pipe,
             Token::Identifier("x".into()),
             Token::FatArrow,
-            Token::Number("0".into()),
-            Token::RightBrace
+            Token::Number(0),
+            Token::RightBrace,
         ];
 
         assert_eq!(tokens, expected_tokens);
