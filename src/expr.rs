@@ -5,6 +5,7 @@ pub enum Expr {
     Binary(Operator, Box<Expr>, Box<Expr>),
     Lambda(String, Box<Expr>),
     Application(Box<Expr>, Vec<Expr>),
+    FnDefinition(String, Vec<Expr>, Box<Expr>),
 }
 
 #[derive(Debug, PartialEq, Eq)]

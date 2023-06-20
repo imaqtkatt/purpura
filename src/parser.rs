@@ -151,8 +151,36 @@ impl<'a> Parser<'a> {
         Ok(Expr::Lambda(identifier, Box::new(body)))
     }
 
+    pub fn fn_definition(&mut self) -> Result<Expr> {
+        self.expect(Token::Fn)?;
+        let identifier = self.expect_identifier()?;
+        self.expect(Token::LeftParenthesis)?;
+
+        let mut args = Vec::new();
+
+        while !self.is(Token::RightParenthesis) {
+            args.push(self.primary()?);
+            if self.is(Token::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        self.expect(Token::RightParenthesis)?;
+
+        self.expect(Token::Equal)?;
+
+        let expr = self.expr()?;
+
+        self.expect(Token::Semicolon)?;
+
+        Ok(Expr::FnDefinition(identifier, args, Box::new(expr)))
+    }
+
     pub fn expr(&mut self) -> Result<Expr> {
         match self.current {
+            Token::Fn => self.fn_definition(),
             Token::Pipe => self.lambda(),
             _ => self.infix(0),
         }
@@ -274,6 +302,26 @@ mod test {
         );
 
         assert_eq!(call, Ok(expected));
+        Ok(())
+    }
+
+    #[test]
+    fn test_fn_definition() -> Result<()> {
+        let source: String = r#"
+        fn id(x) = x;
+        "#.into();
+
+        let mut parser = Parser::new(&source);
+        let fn_definition = parser.fn_definition();
+
+        let expected = Expr::FnDefinition(
+            "id".into(),
+            vec![Expr::Identifier("x".into())],
+            Box::new(Expr::Identifier("x".into())),
+        );
+
+        assert_eq!(fn_definition, Ok(expected));
+
         Ok(())
     }
 }
