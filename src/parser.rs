@@ -2,7 +2,7 @@
 //! stream of tokens into a tree.
 
 use crate::{
-    expr::{Expr, Operator},
+    expr::{Expr, Operator, Pattern},
     lexer::Lexer,
     token::Token,
 };
@@ -10,7 +10,7 @@ use crate::{
 type Result<T> = std::result::Result<T, String>;
 
 const PRECEDENCE_TABLE: &[&[Token]] = &[
-    &[Token::AndAnd, Token::Pipe],
+    &[Token::AndAnd, Token::PipePipe],
     &[Token::GreaterThan, Token::LessThan],
     &[Token::Plus, Token::Minus],
     &[Token::Mul, Token::Div],
@@ -151,6 +151,34 @@ impl<'a> Parser<'a> {
         Ok(Expr::Lambda(identifier, Box::new(body)))
     }
 
+    pub fn match_expr(&mut self) -> Result<Expr> {
+        self.expect(Token::Match)?;
+        let expr = self.expr()?;
+        self.expect(Token::LeftBrace)?;
+        
+        let mut patterns = Vec::new();
+
+        while !self.is(Token::RightBrace) {
+            self.expect(Token::Pipe)?;
+            let left = self.expr()?;
+            self.expect(Token::FatArrow)?;
+            let right = self.expr()?;
+            
+            let pattern = Pattern::new(left, right);
+            patterns.push(pattern);
+
+            if self.is(Token::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        self.expect(Token::RightBrace)?;
+        
+        Ok(Expr::Match(Box::new(expr), patterns))
+    }
+
     pub fn fn_definition(&mut self) -> Result<Expr> {
         self.expect(Token::Fn)?;
         let identifier = self.expect_identifier()?;
@@ -181,6 +209,7 @@ impl<'a> Parser<'a> {
     pub fn expr(&mut self) -> Result<Expr> {
         match self.current {
             Token::Fn => self.fn_definition(),
+            Token::Match => self.match_expr(),
             Token::Pipe => self.lambda(),
             _ => self.infix(0),
         }
@@ -196,7 +225,7 @@ impl<'a> Parser<'a> {
 mod test {
     use std::io::Result;
 
-    use crate::expr::{Expr, Operator};
+    use crate::expr::{Expr, Operator, Pattern};
 
     use super::Parser;
 
@@ -322,6 +351,38 @@ mod test {
 
         assert_eq!(fn_definition, Ok(expected));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_match() -> Result<()> {
+        let source: String = r#"
+        match num {
+        | 1 => 1,
+        | x => x,
+        }
+        "#.into();
+
+        let mut parser = Parser::new(&source);
+
+        let expr = parser.match_expr();
+
+        let expected = Expr::Match(
+            Box::new(Expr::Identifier("num".into())),
+            vec![
+                Pattern::new(
+                    Expr::Number(1),
+                    Expr::Number(1)
+                ),
+                Pattern::new(
+                    Expr::Identifier("x".into()),
+                    Expr::Identifier("x".into())
+                ),
+            ],
+        );
+
+        assert_eq!(expr, Ok(expected));
+        
         Ok(())
     }
 }
