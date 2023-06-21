@@ -7,7 +7,7 @@ pub enum Token {
     Fn,
     Let,
     Match,
-    Spec,
+    Sig,
     Data,
 
     Equal,
@@ -61,7 +61,7 @@ impl Display for Token {
             Token::Fn => write!(f, "fn"),
             Token::Let => write!(f, "let"),
             Token::Match => write!(f, "match"),
-            Token::Spec => write!(f, "spec"),
+            Token::Sig => write!(f, "sig"),
             Token::Data => write!(f, "data"),
 
             Token::Equal => write!(f, "="),

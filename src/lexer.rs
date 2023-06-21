@@ -47,7 +47,7 @@ impl<'a> Lexer<'a> {
             "fn" => Token::Fn,
             "let" => Token::Let,
             "match" => Token::Match,
-            "spec" => Token::Spec,
+            "sig" => Token::Sig,
             "data" => Token::Data,
             _ => Token::Identifier(identifier),
         }
@@ -497,7 +497,7 @@ mod test {
 
     #[test]
     fn reads_identifiers() -> Result<()> {
-        let source: String = "fn let match spec data".into();
+        let source: String = "fn let match sig data".into();
 
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.collect();
@@ -506,7 +506,7 @@ mod test {
             Token::Fn,
             Token::Let,
             Token::Match,
-            Token::Spec,
+            Token::Sig,
             Token::Data,
         ];
 
