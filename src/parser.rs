@@ -73,6 +73,7 @@ impl<'a> Parser<'a> {
         let literal = match &self.current {
             Token::Identifier(str) => Ok(Expr::Identifier(str.clone())),
             Token::Number(num) => Ok(Expr::Number(*num)),
+            Token::String(s) => Ok(Expr::String(s.clone())),
             Token::LeftParenthesis => {
                 self.advance();
                 let expr = self.expr()?;

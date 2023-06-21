@@ -1,6 +1,7 @@
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     Number(u64),
+    String(String),
     Identifier(String),
     Binary(Operator, Box<Expr>, Box<Expr>),
     Lambda(String, Box<Expr>),
