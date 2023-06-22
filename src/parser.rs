@@ -2,7 +2,7 @@
 //! stream of tokens into a tree.
 
 use crate::{
-    expr::{Expr, Operator, Arm, Statement, Pattern, Fn, FnBody, Data, Signature, Type},
+    expr::{Expr, Operator, Arm, Statement, Pattern, Fn, FnBody, Data, Signature, Type, Constructor},
     lexer::Lexer,
     token::Token,
 };
@@ -255,6 +255,9 @@ impl<'a> Parser<'a> {
             
             while !self.is(Token::GreaterThan) {
                 types.push(self.parse_type()?);
+                if self.is(Token::Comma) {
+                    self.advance();
+                }
             }
             self.expect(Token::GreaterThan)?;
             
@@ -301,7 +304,61 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_data(&mut self) -> Result<Data> {
-        todo!("implement parse_data")
+        self.expect(Token::Data)?;
+        let name = self.expect_identifier()?;
+
+        let mut params = Vec::new();
+
+        if self.is(Token::LessThan) {
+            self.advance();
+            while !self.is(Token::GreaterThan) {
+                match self.parse_type()? {
+                    Type::TypeVariable(type_variable) => {
+                        params.push(type_variable);
+                    },
+                    _ => return Err("Expected type variable".into()),
+                }
+                if self.is(Token::Comma) {
+                    self.advance();
+                }
+            }
+            self.expect(Token::GreaterThan)?;
+        }
+
+        self.expect(Token::LeftBrace)?;
+
+        let mut ctors: Vec<Constructor> = Vec::new();
+
+        while !self.is(Token::RightBrace) {
+            let name = self.expect_identifier()?;
+            self.expect(Token::LeftParenthesis)?;
+            
+            let mut types: Vec<Type> = Vec::new();
+
+            while !self.is(Token::RightParenthesis) {
+                types.push(self.parse_type()?);
+            }
+            self.expect(Token::RightParenthesis)?;
+
+            let ctor = Constructor {
+                name,
+                types,
+            };
+
+            ctors.push(ctor);
+
+            if self.is(Token::Comma) {
+                self.advance();
+            }
+        }
+        self.expect(Token::RightBrace)?;
+
+        let data = Data {
+            name,
+            params,
+            ctors,
+        };
+        Ok(data)
     }
 
     pub fn expr(&mut self) -> Result<Expr> {

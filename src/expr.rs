@@ -60,11 +60,13 @@ pub struct Signature {
     pub return_type: Type,
 }
 
+#[derive(Debug)]
 pub struct Constructor {
     pub name: String,
     pub types: Vec<Type>,
 }
 
+#[derive(Debug)]
 pub struct Data {
     pub name: String,
     pub params: Vec<String>,
