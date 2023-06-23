@@ -157,7 +157,7 @@ impl<'a> Parser<'a> {
 
         let mut statements = Vec::new();
 
-        while !(self.current == Token::RightBrace) {
+        while !self.is(Token::RightBrace) {
             statements.push(self.statement()?);
             if self.current == Token::Semicolon {
                 self.advance();
@@ -169,15 +169,33 @@ impl<'a> Parser<'a> {
         Ok(Expr::Block(statements))
     }
 
-    fn pattern(&mut self) -> Result<Pattern> {
-        let pattern = match self.expr()? {
+    fn pattern_of_expr(&self, expr: Expr) -> Result<Pattern> {
+        let pattern = match expr {
             Expr::Identifier(i) => Pattern::Identifier(i),
             Expr::Number(n) => Pattern::Number(n),
             Expr::String(s) => Pattern::String(s),
-            Expr::Application(_, _) => todo!(),
-            _ => return Err("iwkms".into()),
+            Expr::Application(expr, exprs) => {
+                let identifier: Result<String> = match expr.as_ref() {
+                    Expr::Identifier(i) => Ok(i.clone()),
+                    _ => Err("Expected identifier".into()),
+                };
+                let identifier = identifier?;
+
+                let mut params: Vec<Pattern> = Vec::new();
+                for expr in exprs {
+                    params.push(self.pattern_of_expr(expr)?);
+                }
+                
+                Pattern::Application(identifier, params)
+            },
+            _ => return Err("Expected".into())
         };
-        Ok(pattern)
+        return Ok(pattern)
+    }
+
+    fn pattern(&mut self) -> Result<Pattern> {
+        let expr = self.expr()?;
+        self.pattern_of_expr(expr)
     }
 
     pub fn match_expr(&mut self) -> Result<Expr> {
