@@ -208,6 +208,17 @@ impl<'a> Parser<'a> {
         Ok(Expr::Match(Box::new(expr), patterns))
     }
 
+    fn let_statement(&mut self) -> Result<Statement> {
+        self.expect(Token::Let)?;
+        let identifier = self.expect_identifier()?;
+        self.expect(Token::Equal)?;
+        let expr = self.expr()?;
+
+        self.expect(Token::Semicolon)?;
+
+        Ok(Statement::Let(identifier, expr))
+    }
+
     pub fn parse_fn(&mut self) -> Result<Fn> {
         self.expect(Token::Fn)?;
         let name = self.expect_identifier()?;
@@ -372,7 +383,7 @@ impl<'a> Parser<'a> {
 
     pub fn statement(&mut self) -> Result<Statement> {
         match self.current {
-            Token::Let => todo!("let_statement"),
+            Token::Let => self.let_statement(),
             _ => Ok(Statement::Expr(Box::new(self.expr()?)))
         }
     }
