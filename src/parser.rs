@@ -38,10 +38,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn is(&self, token: Token) -> bool {
-        self.current == token
+    /// Returns true if the current token is the same as the other
+    fn is(&self, other: Token) -> bool {
+        self.current == other
     }
 
+    /// Advances the state of the Lexer
     fn advance(&mut self) -> Token {
         let mut ret = self.lexer.next().unwrap_or(Token::EOF);
         std::mem::swap(&mut self.next, &mut self.current);
@@ -49,6 +51,7 @@ impl<'a> Parser<'a> {
         ret
     }
 
+    /// Returns Ok(...) if the current token is equal to the expected
     fn expect(&mut self, expected: Token) -> Result<Token> {
         match &self.current {
             a if *a == expected => Ok(self.advance()),
@@ -56,6 +59,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Expects that the current token is an identifier
     fn expect_identifier(&mut self) -> Result<String> {
         match &self.current {
             Token::Identifier(str) => {
@@ -69,6 +73,7 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+    /// Parses a Primary Expression
     fn primary(&mut self) -> Result<Expr> {
         let literal = match &self.current {
             Token::Identifier(str) => Ok(Expr::Identifier(str.clone())),
@@ -86,6 +91,12 @@ impl<'a> Parser<'a> {
         literal
     }
 
+    /// Parses an Operator
+    /// 
+    /// # Operators
+    /// ```
+    /// [*, /, +, -, >, <, ||, &&]
+    /// ```
     fn operator(&mut self) -> Result<Operator> {
         let operator = match self.current {
             Token::Mul => Ok(Operator::Mul),
@@ -102,6 +113,12 @@ impl<'a> Parser<'a> {
         operator
     }
 
+    /// Parses a call Expression
+    /// 
+    /// # Example
+    /// ```
+    /// succ(41)
+    /// ```
     pub fn call(&mut self) -> Result<Expr> {
         let mut args = Vec::new();
         let callee = self.primary()?;
@@ -125,6 +142,12 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parses a Binary Expression
+    /// 
+    /// # Example
+    /// ```
+    /// 10 > 9
+    /// ```
     fn infix(&mut self, precedence: usize) -> Result<Expr> {
         if precedence > PRECEDENCE_TABLE.len() - 1 {
             return self.call();
@@ -144,6 +167,12 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
+    /// Parses a lambda Expression
+    /// 
+    /// # Example
+    /// ```
+    /// |x| x
+    /// ```
     pub fn lambda(&mut self) -> Result<Expr> {
         self.expect(Token::Pipe)?;
         let identifier = self.expect_identifier()?;
@@ -152,6 +181,15 @@ impl<'a> Parser<'a> {
         Ok(Expr::Lambda(identifier, Box::new(body)))
     }
 
+    /// Parses a block Expression
+    /// 
+    /// # Example
+    /// ```
+    /// {
+    ///   let x = 1;
+    ///   x
+    /// }
+    /// ```
     pub fn block(&mut self) -> Result<Expr> {
         self.expect(Token::LeftBrace)?;
 
@@ -159,7 +197,7 @@ impl<'a> Parser<'a> {
 
         while !self.is(Token::RightBrace) {
             statements.push(self.statement()?);
-            if self.current == Token::Semicolon {
+            if self.is(Token::Semicolon) {
                 self.advance();
             }
         }
@@ -193,11 +231,21 @@ impl<'a> Parser<'a> {
         return Ok(pattern)
     }
 
+    /// Returns the Pattern of an Expression
     fn pattern(&mut self) -> Result<Pattern> {
         let expr = self.expr()?;
         self.pattern_of_expr(expr)
     }
 
+    /// Parses a match Expression
+    /// 
+    /// # Example
+    /// ```
+    /// match 1 + 1 {
+    /// | 1 => 42,
+    /// | x => 2,
+    /// }
+    /// ```
     pub fn match_expr(&mut self) -> Result<Expr> {
         self.expect(Token::Match)?;
         let expr = self.expr()?;
@@ -226,6 +274,12 @@ impl<'a> Parser<'a> {
         Ok(Expr::Match(Box::new(expr), patterns))
     }
 
+    /// Parses a let Statement
+    /// 
+    /// # Example
+    /// ```
+    /// let x = "foo";
+    /// ```
     fn let_statement(&mut self) -> Result<Statement> {
         self.expect(Token::Let)?;
         let identifier = self.expect_identifier()?;
@@ -237,6 +291,12 @@ impl<'a> Parser<'a> {
         Ok(Statement::Let(identifier, expr))
     }
 
+    /// Parses a Function
+    /// 
+    /// # Example
+    /// ```
+    /// fn succ(x) = x + 1
+    /// ```
     pub fn parse_fn(&mut self) -> Result<Fn> {
         self.expect(Token::Fn)?;
         let name = self.expect_identifier()?;
@@ -272,6 +332,14 @@ impl<'a> Parser<'a> {
         Ok(fun)
     }
 
+    /// Parses a Type
+    /// 
+    /// # Examples
+    /// ```
+    /// Bool     // Identifier
+    /// Maybe<a> // Generic
+    /// a        // TypeVariable
+    /// ```
     fn parse_type(&mut self) -> Result<Type> {
         let ret: Type;
         let type_name = self.expect_identifier()?;
@@ -305,6 +373,12 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parses a Signature
+    /// 
+    /// # Example
+    /// ```
+    /// sig succ(Nat) -> Nat
+    /// ```
     pub fn parse_sig(&mut self) -> Result<Signature> {
         self.expect(Token::Sig)?;
         let name = self.expect_identifier()?;
@@ -332,6 +406,15 @@ impl<'a> Parser<'a> {
         Ok(signature)
     }
 
+    /// Parses a Data Type
+    /// 
+    /// # Example
+    /// ```
+    /// data Maybe<a> {
+    ///     Just(a),
+    ///     None(),
+    /// }
+    /// ```
     pub fn parse_data(&mut self) -> Result<Data> {
         self.expect(Token::Data)?;
         let name = self.expect_identifier()?;
@@ -390,6 +473,12 @@ impl<'a> Parser<'a> {
         Ok(data)
     }
 
+    /// Parses an Expression
+    /// 
+    /// # Example
+    /// ```
+    /// |x| x + 1
+    /// ```
     pub fn expr(&mut self) -> Result<Expr> {
         match self.current {
             Token::LeftBrace => self.block(),
@@ -399,6 +488,14 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parses a Statement
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// 1 + 1
+    /// let x = 1 + 1;
+    /// ```
     pub fn statement(&mut self) -> Result<Statement> {
         match self.current {
             Token::Let => self.let_statement(),
