@@ -1,11 +1,13 @@
 //! Parser for the purpura language, the main structure of this module is the [Parser] that turns a
 //! stream of tokens into a tree.
 
+pub mod expr;
+
 use crate::{
     expr::{Expr, Operator, Arm, Statement, Pattern, Fn, FnBody, Data, Signature, Type, Constructor},
-    lexer::Lexer,
-    token::Token,
 };
+
+use lexer::{Lexer, token::Token};
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -678,3 +680,4 @@ mod test {
     }
 }
 */
+

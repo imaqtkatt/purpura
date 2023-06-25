@@ -2,7 +2,10 @@
 //! uses it to split the source code into tokens. The tokens are then used by the parser to build
 //! a tree.
 
+pub mod token;
+
 use crate::token::Token;
+
 use std::{iter::Peekable, str::Chars};
 
 /// The main structure of the module. It is an iterator of tokens.
@@ -585,3 +588,4 @@ mod test {
         Ok(())
     }
 }
+
