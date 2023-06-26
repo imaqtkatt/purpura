@@ -4,6 +4,8 @@
 
 pub mod token;
 
+use location::{Spanned, Location, Byte};
+
 use crate::token::Token;
 
 use std::{iter::Peekable, str::Chars};
@@ -11,22 +13,29 @@ use std::{iter::Peekable, str::Chars};
 /// The main structure of the module. It is an iterator of tokens.
 pub struct Lexer<'a> {
     source: Peekable<Chars<'a>>,
+    current_position: usize,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Lexer<'a> {
         Lexer {
             source: source.chars().peekable(),
+            current_position: 0,
         }
     }
 
+    fn consume(&mut self) -> Option<char> {
+        self.current_position += 1;
+        self.source.next()
+    }
+
     fn single(&mut self, token: Token) -> Token {
-        self.source.next();
+        self.consume();
         token
     }
 
     fn skip(&mut self) -> Token {
-        self.source.next();
+        self.consume();
         self.next_token()
     }
 
@@ -35,7 +44,7 @@ impl<'a> Lexer<'a> {
 
         while let Some(ch) = self.source.peek() {
             if predicate(*ch) {
-                string.push(self.source.next().unwrap());
+                string.push(self.consume().unwrap());
             } else {
                 break;
             }
@@ -67,14 +76,14 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_string(&mut self) -> Token {
-        self.source.next(); // ignore first quote "
+        self.consume(); // ignore first quote "
         let string = self.read_while(ne_quote);
-        self.source.next();
+        self.consume();
         Token::String(string)
     }
 
     fn maybe_arrow(&mut self) -> Token {
-        self.source.next();
+        self.consume();
         match self.source.peek() {
             Some('>') => self.single(Token::Arrow),
             _ => Token::Minus,
@@ -82,7 +91,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_equal(&mut self) -> Token {
-        self.source.next();
+        self.consume();
         match self.source.peek() {
             Some('=') => self.single(Token::EqualEqual),
             Some('>') => self.single(Token::FatArrow),
@@ -91,7 +100,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_bang(&mut self) -> Token {
-        self.source.next();
+        self.consume();
         match self.source.peek() {
             Some('=') => self.single(Token::NotEqual),
             _ => Token::Bang,
@@ -99,7 +108,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_less_equal(&mut self) -> Token {
-        self.source.next();
+        self.consume();
         match self.source.peek() {
             Some('=') => self.single(Token::LessEqual),
             _ => Token::LessThan,
@@ -107,7 +116,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_greater_equal(&mut self) -> Token {
-        self.source.next();
+        self.consume();
         match self.source.peek() {
             Some('=') => self.single(Token::GreaterEqual),
             _ => Token::GreaterThan,
@@ -115,12 +124,12 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_comment(&mut self) -> Token {
-        self.source.next();
+        self.consume();
         match self.source.peek() {
             Some('[') => {
-                self.source.next();
+                self.consume();
                 let comment = self.read_while(|c| c != ']');
-                self.source.next();
+                self.consume();
                 Token::Comment(comment)
             }
             _ => {
@@ -131,7 +140,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_pipe(&mut self) -> Token {
-        self.source.next();
+        self.consume();
         match self.source.peek() {
             Some('|') => self.single(Token::PipePipe),
             _ => Token::Pipe,
@@ -139,7 +148,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_and(&mut self) -> Token {
-        self.source.next();
+        self.consume();
         match self.source.peek() {
             Some('&') => self.single(Token::AndAnd),
             Some(c) => Token::Unexpected(c.to_string()),
@@ -151,7 +160,7 @@ impl<'a> Lexer<'a> {
     pub fn next_token(&mut self) -> Token {
         if let Some(ch) = self.source.peek() {
             match ch {
-                '\0' | ' ' | '\t' | '\n' | '\r' => self.skip(),
+                // '\0' | ' ' | '\t' | '\n' | '\r' => self.skip(),
                 '"' => self.read_string(),
                 '=' => self.read_equal(),
                 '!' => self.read_bang(),
@@ -177,6 +186,35 @@ impl<'a> Lexer<'a> {
             }
         } else {
             Token::EOF
+        }
+    }
+
+    /// Returns a Structure with the Token and the value of its location.
+    fn next_token_spanned(&mut self) -> Option<Spanned<Token>> {
+        let start = self.current_position;
+        if let Some(ch) = self.source.peek() {
+            match ch {
+                ' ' | '\t' | '\r' | '\n' | '\0' => {
+                    self.consume();
+                    self.next_token_spanned()
+                },
+                _ => {
+                    let token = self.next_token();
+                    match token {
+                        Token::EOF => None,
+                        other => {
+                            let end = self.current_position;
+                            let spanned = Spanned {
+                                value: other,
+                                location: Location { start: Byte(start), end: Byte(end) },
+                            };
+                            Some(spanned)
+                        }
+                    }
+                }
+            }
+        } else {
+            None
         }
     }
 }
