@@ -1,5 +1,7 @@
+use location::Spanned;
+
 #[derive(Debug)]
-pub enum Expr {
+pub enum ExprKind {
     Number(u64),
     String(String),
     Identifier(String),
@@ -10,20 +12,26 @@ pub enum Expr {
     Block(Vec<Statement>),
 }
 
+/// An Expression with a location.
+pub type Expr = Spanned<ExprKind>;
+
 #[derive(Debug)]
-pub enum Statement {
+pub enum StatementKind {
     Expr(Box<Expr>),
     Let(String, Expr),
 }
 
+/// A Statement with a location.
+pub type Statement = Spanned<StatementKind>;
+
 #[derive(Debug)]
 pub struct Arm {
     pub left: Box<Pattern>,
-    pub right: Box<Expr>,
+    pub right: Box<ExprKind>,
 }
 
 impl Arm {
-    pub fn new(left: Pattern, right: Expr) -> Self {
+    pub fn new(left: Pattern, right: ExprKind) -> Self {
         Self {
             left: Box::new(left),
             right: Box::new(right),
@@ -40,8 +48,8 @@ pub enum Type {
 
 #[derive(Debug)]
 pub enum FnBody {
-    Block(Vec<Statement>),
-    Expr(Box<Expr>),
+    Block(Vec<StatementKind>),
+    Expr(Box<ExprKind>),
 }
 
 #[derive(Debug)]
