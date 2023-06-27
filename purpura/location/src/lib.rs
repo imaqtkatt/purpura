@@ -2,11 +2,11 @@
 //! other data structures.
 
 /// The byte position
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Byte(pub usize);
 
 /// A range between two bytes
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Location {
     pub start: Byte,
     pub end: Byte,
@@ -17,4 +17,13 @@ pub struct Location {
 pub struct Spanned<T> {
     pub value: T,
     pub location: Location,
+}
+
+impl Location {
+    pub fn mix(self, other: Location) -> Self {
+        Self {
+            start: self.start,
+            end: other.end,
+        }
+    }
 }
