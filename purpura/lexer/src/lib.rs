@@ -18,7 +18,7 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Lexer<'a> {
-        Lexer {
+        Self {
             source: source.chars().peekable(),
             current_position: 0,
         }
@@ -32,11 +32,6 @@ impl<'a> Lexer<'a> {
     fn single(&mut self, token: Token) -> Token {
         self.consume();
         token
-    }
-
-    fn skip(&mut self) -> Token {
-        self.consume();
-        self.next_token()
     }
 
     fn read_while(&mut self, predicate: fn(char) -> bool) -> String {
@@ -190,7 +185,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Returns a Structure with the Token and the value of its location.
-    fn next_token_spanned(&mut self) -> Option<Spanned<Token>> {
+    pub fn next_token_spanned(&mut self) -> Option<Spanned<Token>> {
         let start = self.current_position;
         if let Some(ch) = self.source.peek() {
             match ch {
@@ -220,13 +215,10 @@ impl<'a> Lexer<'a> {
 }
 
 impl Iterator for Lexer<'_> {
-    type Item = Token;
+    type Item = Spanned<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.next_token() {
-            Token::EOF => None,
-            token => Some(token),
-        }
+        self.next_token_spanned()
     }
 }
 
@@ -316,9 +308,12 @@ mod test {
         let source: String = "> >=".into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
-        let expected_tokens = vec![Token::GreaterThan, Token::GreaterEqual];
+        let expected_tokens = vec![
+            Token::GreaterThan,
+            Token::GreaterEqual,
+        ];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -330,9 +325,12 @@ mod test {
         let source: String = "< <=".into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
-        let expected_tokens = vec![Token::LessThan, Token::LessEqual];
+        let expected_tokens = vec![
+            Token::LessThan,
+            Token::LessEqual,
+        ];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -359,11 +357,11 @@ mod test {
 
         let mut lexer = Lexer::new(&source);
 
-        let pipe = lexer.next();
-        let pipe_pipe = lexer.next();
+        let pipe = lexer.next().unwrap();
+        let pipe_pipe = lexer.next().unwrap();
 
-        assert_eq!(pipe, Some(Token::Pipe));
-        assert_eq!(pipe_pipe, Some(Token::PipePipe));
+        assert_eq!(pipe.value, Token::Pipe);
+        assert_eq!(pipe_pipe.value, Token::PipePipe);
 
         Ok(())
     }
@@ -375,11 +373,11 @@ mod test {
 
         let mut lexer = Lexer::new(&source);
 
-        let and_unexpected = lexer.next();
-        let and_and = lexer.next();
+        let and_unexpected = lexer.next().unwrap();
+        let and_and = lexer.next().unwrap();
 
-        assert_eq!(and_unexpected, Some(Token::Unexpected(" ".into())));
-        assert_eq!(and_and, Some(Token::AndAnd));
+        assert_eq!(and_unexpected.value, Token::Unexpected(" ".into()));
+        assert_eq!(and_and.value, Token::AndAnd);
 
         Ok(())
     }
@@ -389,7 +387,7 @@ mod test {
         let source: String = "*      + - /".into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
         let expected_tokens = vec![Token::Mul, Token::Plus, Token::Minus, Token::Div];
 
@@ -403,7 +401,7 @@ mod test {
         let source: String = "= == =>".into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
         let expected_tokens = vec![Token::Equal, Token::EqualEqual, Token::FatArrow];
 
@@ -445,7 +443,7 @@ mod test {
         let source: String = "! !=".into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
         let expected_tokens = vec![Token::Bang, Token::NotEqual];
 
@@ -478,7 +476,7 @@ mod test {
         .into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
         let expected_tokens = vec![
             Token::Comment(" this is a comment".into()),
@@ -501,7 +499,7 @@ mod test {
         .into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
         let expected_tokens = vec![Token::Comment(" big\n        comment\n        ".into())];
 
@@ -520,7 +518,7 @@ mod test {
         .into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
         let expected_tokens = vec![
             Token::Comment(" foo".into()),
@@ -541,7 +539,7 @@ mod test {
         let source: String = "fn let match sig data".into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
         let expected_tokens = vec![
             Token::Fn,
@@ -561,7 +559,7 @@ mod test {
         let source: String = "let name = \"purpura\";".into();
         let lexer = Lexer::new(&source);
 
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
         let expected_tokens = vec![
             Token::Let,
@@ -580,7 +578,7 @@ mod test {
     fn read_lambda() -> Result<()> {
         let source: String = "|x| x".into();
 
-        let tokens: Vec<Token> = Lexer::new(&source).collect();
+        let tokens: Vec<Token> = Lexer::new(&source).map(|t| t.value).collect();
 
         let expected_tokens = vec![
             Token::Pipe,
@@ -604,7 +602,7 @@ mod test {
         .into();
 
         let lexer = Lexer::new(&source);
-        let tokens: Vec<Token> = lexer.collect();
+        let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
         let expected_tokens = vec![
             Token::Match,
