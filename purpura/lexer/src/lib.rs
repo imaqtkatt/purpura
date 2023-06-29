@@ -185,7 +185,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Returns a Structure with the Token and the value of its location.
-    pub fn next_token_spanned(&mut self) -> Option<Spanned<Token>> {
+    pub fn next_token_spanned(&mut self) -> Spanned<Token> {
         let start = self.current_position;
         if let Some(ch) = self.source.peek() {
             match ch {
@@ -196,20 +196,22 @@ impl<'a> Lexer<'a> {
                 _ => {
                     let token = self.next_token();
                     match token {
-                        Token::EOF => None,
                         other => {
                             let end = self.current_position;
-                            let spanned = Spanned {
+                            Spanned {
                                 value: other,
                                 location: Location { start: Byte(start), end: Byte(end) },
-                            };
-                            Some(spanned)
+                            }
                         }
                     }
                 }
             }
         } else {
-            None
+            let end = self.current_position;
+            Spanned {
+                value: Token::EOF,
+                location: Location { start: Byte(start), end: Byte(end) },
+            }
         }
     }
 }
@@ -218,7 +220,11 @@ impl Iterator for Lexer<'_> {
     type Item = Spanned<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token_spanned()
+        let token = self.next_token_spanned();
+        match token.value {
+            Token::EOF => None,
+            _ => Some(token),
+        }
     }
 }
 

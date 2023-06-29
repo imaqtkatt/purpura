@@ -2,12 +2,14 @@
 //! stream of tokens into a tree.
 
 pub mod expr;
+pub mod spanned;
 
-use crate::{
-    expr::{Expr, Operator, Arm, Statement, Pattern, Fn, FnBody, Data, Signature, Type, Constructor},
-};
+use crate::expr::*;
 
-use lexer::{Lexer, token::Token};
+use expr::{PatternKind, StatementKind, TypeKind};
+use lexer::{token::Token, Lexer};
+use location::{Spanned};
+use spanned::{Span, LocWith};
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -22,48 +24,45 @@ const PRECEDENCE_TABLE: &[&[Token]] = &[
 /// tree.
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
-    current: Token,
-    next: Token,
+    current: Spanned<Token>,
+    next: Spanned<Token>,
 }
 
 impl<'a> Parser<'a> {
+    /// Creates a new Parser from the given `source`.
     pub fn new(source: &'a str) -> Self {
         let mut lexer = Lexer::new(source);
 
-        let current = lexer.next();
-        let next = lexer.next();
+        let current = lexer.next_token_spanned();
+        let next = lexer.next_token_spanned();
 
-        Self {
-            lexer,
-            current: current.unwrap_or(Token::EOF),
-            next: next.unwrap_or(Token::EOF),
-        }
+        Self { lexer, current, next }
     }
 
-    /// Returns true if the current token is the same as the other
+    /// Returns true if the current token is the same as the `other`.
     fn is(&self, other: Token) -> bool {
-        self.current == other
+        self.current.value == other
     }
 
-    /// Advances the state of the Lexer
-    fn advance(&mut self) -> Token {
-        let mut ret = self.lexer.next().unwrap_or(Token::EOF);
+    /// Advances the state of the Lexer.
+    fn advance(&mut self) -> Spanned<Token> {
+        let mut ret = self.lexer.next_token_spanned();
         std::mem::swap(&mut self.next, &mut self.current);
         std::mem::swap(&mut self.next, &mut ret);
         ret
     }
 
-    /// Returns Ok(...) if the current token is equal to the expected
-    fn expect(&mut self, expected: Token) -> Result<Token> {
+    /// Returns Ok(...) if the current token is equal to the `expected`.
+    fn expect(&mut self, expected: Token) -> Result<Spanned<Token>> {
         match &self.current {
-            a if *a == expected => Ok(self.advance()),
+            a if a.value == expected => Ok(self.advance()),
             _ => Err(format!("Expected {:?}, got {:?}", expected, self.current)),
         }
     }
 
-    /// Expects that the current token is an identifier
+    /// Expects that the current token is an identifier.
     fn expect_identifier(&mut self) -> Result<String> {
-        match &self.current {
+        match &self.current.value {
             Token::Identifier(str) => {
                 let str = str.clone();
                 self.advance();
@@ -75,32 +74,43 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    /// Parses a Primary Expression
+    /// Parses a Primary Expression.
     fn primary(&mut self) -> Result<Expr> {
-        let literal = match &self.current {
-            Token::Identifier(str) => Ok(Expr::Identifier(str.clone())),
-            Token::Number(num) => Ok(Expr::Number(*num)),
-            Token::String(s) => Ok(Expr::String(s.clone())),
+        let literal = match &self.current.value {
+            Token::Identifier(id) => Ok(Spanned::new(
+                ExprKind::Identifier(id.clone()),
+                self.current.location,
+            )),
+            Token::Number(num) => Ok(Spanned::new(
+                ExprKind::Number(*num),
+                self.current.location,
+            )),
+            Token::String(string) => Ok(Spanned::new(
+                ExprKind::String(string.clone()),
+                self.current.location,
+            )),
             Token::LeftParenthesis => {
+                let start = self.current.location;
                 self.advance();
                 let expr = self.expr()?;
-                self.expect(Token::RightParenthesis)?;
-                return Ok(expr);
+                let end = self.expect(Token::RightParenthesis)?;
+                
+                return Ok(Spanned::new(expr.value, start.with(&end)));
             }
-            _ => Err(format!("Expected a literal, got {:?}", self.current)),
+            _ => Err(format!("Expected a literal, got {:?}", self.current.value)),
         };
         self.advance();
         literal
     }
 
-    /// Parses an Operator
-    /// 
+    /// Parses an Operator.
+    ///
     /// # Operators
     /// ```
     /// [*, /, +, -, >, <, ||, &&]
     /// ```
     fn operator(&mut self) -> Result<Operator> {
-        let operator = match self.current {
+        let operator = match self.current.value {
             Token::Mul => Ok(Operator::Mul),
             Token::Div => Ok(Operator::Div),
             Token::Plus => Ok(Operator::Sum),
@@ -115,8 +125,8 @@ impl<'a> Parser<'a> {
         operator
     }
 
-    /// Parses a call Expression
-    /// 
+    /// Parses a call Expression.
+    ///
     /// # Example
     /// ```
     /// succ(41)
@@ -124,6 +134,8 @@ impl<'a> Parser<'a> {
     pub fn call(&mut self) -> Result<Expr> {
         let mut args = Vec::new();
         let callee = self.primary()?;
+        let callee_location = callee.location;
+
         if self.is(Token::LeftParenthesis) {
             self.advance();
 
@@ -136,16 +148,23 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            self.expect(Token::RightParenthesis)?;
+            let r_paren = self.expect(Token::RightParenthesis)?;
 
-            Ok(Expr::Application(Box::new(callee), args))
+            // let spanned = Spanned {
+            //     value: ExprKind::Application(Box::new(callee), args),
+            //     location: callee_location.mix(r_paren.location),
+            // };
+            Ok(Spanned::new(
+                ExprKind::Application(Box::new(callee), args),
+                callee_location.with(&r_paren),
+            ))
         } else {
             Ok(callee)
         }
     }
 
-    /// Parses a Binary Expression
-    /// 
+    /// Parses a Binary Expression.
+    ///
     /// # Example
     /// ```
     /// 10 > 9
@@ -156,35 +175,46 @@ impl<'a> Parser<'a> {
         }
 
         let mut left = self.infix(precedence + 1)?;
+        let left_location = left.location;
 
         while PRECEDENCE_TABLE[precedence]
             .iter()
-            .any(|a| self.current == *a)
+            .any(|a| self.current.value == *a)
         {
             let operator = self.operator()?;
             let right = self.infix(precedence + 1)?;
-            left = Expr::Binary(operator, Box::new(left), Box::new(right))
+            let right_location = right.location;
+            left = Spanned::new(
+                ExprKind::Binary(operator, Box::new(left), Box::new(right)),
+                left_location.with(&right_location),
+            );
         }
 
         Ok(left)
     }
 
-    /// Parses a lambda Expression
-    /// 
+    /// Parses a lambda Expression.
+    ///
     /// # Example
     /// ```
     /// |x| x
     /// ```
     pub fn lambda(&mut self) -> Result<Expr> {
-        self.expect(Token::Pipe)?;
+        let pipe = self.expect(Token::Pipe)?;
         let identifier = self.expect_identifier()?;
         self.expect(Token::Pipe)?;
         let body = self.expr()?;
-        Ok(Expr::Lambda(identifier, Box::new(body)))
+
+        let body_location = body.location;
+
+        Ok(Spanned::new(
+            ExprKind::Lambda(identifier, Box::new(body)),
+            pipe.with(&body_location),
+        ))
     }
 
-    /// Parses a block Expression
-    /// 
+    /// Parses a block Expression.
+    ///
     /// # Example
     /// ```
     /// {
@@ -193,7 +223,7 @@ impl<'a> Parser<'a> {
     /// }
     /// ```
     pub fn block(&mut self) -> Result<Expr> {
-        self.expect(Token::LeftBrace)?;
+        let l_brace = self.expect(Token::LeftBrace)?;
 
         let mut statements = Vec::new();
 
@@ -204,19 +234,32 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect(Token::RightBrace)?;
+        let r_brace = self.expect(Token::RightBrace)?;
 
-        Ok(Expr::Block(statements))
+        Ok(Spanned::new(
+            ExprKind::Block(statements),
+            l_brace.with(&r_brace),
+        ))
     }
 
+    /// Recursive function to parse a Pattern.
     fn pattern_of_expr(&self, expr: Expr) -> Result<Pattern> {
-        let pattern = match expr {
-            Expr::Identifier(i) => Pattern::Identifier(i),
-            Expr::Number(n) => Pattern::Number(n),
-            Expr::String(s) => Pattern::String(s),
-            Expr::Application(expr, exprs) => {
-                let identifier: Result<String> = match expr.as_ref() {
-                    Expr::Identifier(i) => Ok(i.clone()),
+        let pattern = match expr.value {
+            ExprKind::Identifier(i) => Spanned::new(
+                PatternKind::Identifier(i),
+                expr.location,
+            ),
+            ExprKind::Number(n) => Spanned::new(
+                PatternKind::Number(n),
+                expr.location,
+            ),
+            ExprKind::String(s) => Spanned::new(
+                PatternKind::String(s),
+                expr.location,
+            ),
+            ExprKind::Application(expr, exprs) => {
+                let identifier: Result<String> = match expr.value {
+                    ExprKind::Identifier(i) => Ok(i.clone()),
                     _ => Err("Expected identifier".into()),
                 };
                 let identifier = identifier?;
@@ -225,22 +268,25 @@ impl<'a> Parser<'a> {
                 for expr in exprs {
                     params.push(self.pattern_of_expr(expr)?);
                 }
-                
-                Pattern::Application(identifier, params)
-            },
-            _ => return Err("Expected".into())
+
+                Spanned::new(
+                    PatternKind::Application(identifier, params),
+                    expr.location,
+                )
+            }
+            _ => return Err("Expected".into()),
         };
-        return Ok(pattern)
+        return Ok(pattern);
     }
 
-    /// Returns the Pattern of an Expression
+    /// Returns the Pattern of an Expression.
     fn pattern(&mut self) -> Result<Pattern> {
         let expr = self.expr()?;
         self.pattern_of_expr(expr)
     }
 
-    /// Parses a match Expression
-    /// 
+    /// Parses a match Expression.
+    ///
     /// # Example
     /// ```
     /// match 1 + 1 {
@@ -249,10 +295,10 @@ impl<'a> Parser<'a> {
     /// }
     /// ```
     pub fn match_expr(&mut self) -> Result<Expr> {
-        self.expect(Token::Match)?;
+        let match_kw = self.expect(Token::Match)?;
         let expr = self.expr()?;
         self.expect(Token::LeftBrace)?;
-        
+
         let mut patterns = Vec::new();
 
         while !self.is(Token::RightBrace) {
@@ -271,36 +317,42 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect(Token::RightBrace)?;
-        
-        Ok(Expr::Match(Box::new(expr), patterns))
+        let r_brace = self.expect(Token::RightBrace)?;
+
+        Ok(Spanned::new(
+            ExprKind::Match(Box::new(expr), patterns),
+            match_kw.with(&r_brace),
+        ))
     }
 
-    /// Parses a let Statement
-    /// 
+    /// Parses a let Statement.
+    ///
     /// # Example
     /// ```
     /// let x = "foo";
     /// ```
     fn let_statement(&mut self) -> Result<Statement> {
-        self.expect(Token::Let)?;
+        let let_kw = self.expect(Token::Let)?;
         let identifier = self.expect_identifier()?;
         self.expect(Token::Equal)?;
         let expr = self.expr()?;
 
-        self.expect(Token::Semicolon)?;
+        let semicolon = self.expect(Token::Semicolon)?;
 
-        Ok(Statement::Let(identifier, expr))
+        Ok(Spanned::new(
+            StatementKind::Let(identifier, expr),
+            let_kw.with(&semicolon),
+        ))
     }
 
-    /// Parses a Function
-    /// 
+    /// Parses a Function.
+    ///
     /// # Example
     /// ```
     /// fn succ(x) = x + 1
     /// ```
-    pub fn parse_fn(&mut self) -> Result<Fn> {
-        self.expect(Token::Fn)?;
+    pub fn parse_fn(&mut self) -> Result<Spanned<Fn>> {
+        let fn_kw = self.expect(Token::Fn)?;
         let name = self.expect_identifier()?;
         self.expect(Token::LeftParenthesis)?;
 
@@ -320,22 +372,21 @@ impl<'a> Parser<'a> {
         self.expect(Token::Equal)?;
 
         let expr = self.expr()?;
+        let expr_location = expr.location;
 
         let body = match expr {
-            Expr::Block(b) => FnBody::Block(b),
+            Spanned { value: ExprKind::Block(block), .. } => {
+                FnBody::Block(block)
+            },
             other => FnBody::Expr(Box::new(other)),
         };
 
-        let fun = Fn {
-            name,
-            params,
-            body,
-        };
-        Ok(fun)
+        let fun = Fn { name, params, body };
+        Ok(Spanned::new(fun, fn_kw.with(&expr_location)))
     }
 
-    /// Parses a Type
-    /// 
+    /// Parses a Type.
+    ///
     /// # Examples
     /// ```
     /// Bool     // Identifier
@@ -343,46 +394,46 @@ impl<'a> Parser<'a> {
     /// a        // TypeVariable
     /// ```
     fn parse_type(&mut self) -> Result<Type> {
-        let ret: Type;
-        let type_name = self.expect_identifier()?;
-        
-        // Generic
+        let type_location = self.current.location;
+        let type_id = self.expect_identifier()?;
+
         if self.is(Token::LessThan) {
             self.advance();
 
             let mut types: Vec<Type> = Vec::new();
-            
+
             while !self.is(Token::GreaterThan) {
                 types.push(self.parse_type()?);
                 if self.is(Token::Comma) {
                     self.advance();
                 }
             }
-            self.expect(Token::GreaterThan)?;
-            
-            ret = Type::Generic(type_name, types);
-            return Ok(ret)
+            let gt = self.expect(Token::GreaterThan)?;
+            let location = type_location.with(&gt);
+
+            return Ok(Spanned::new(
+                TypeKind::Generic(type_id, types),
+                location
+            ));
         }
-        
-        let first_char = type_name.chars().next().unwrap();
+
+        let first_char = type_id.chars().next().unwrap();
 
         if first_char.is_uppercase() {
-            ret = Type::Identifier(type_name);
-            Ok(ret)
+            Ok(Spanned::new(TypeKind::Identifier(type_id), type_location))
         } else {
-            ret = Type::TypeVariable(type_name);
-            Ok(ret)
+            Ok(Spanned::new(TypeKind::TypeVariable(type_id), type_location))
         }
     }
 
-    /// Parses a Signature
-    /// 
+    /// Parses a Signature.
+    ///
     /// # Example
     /// ```
     /// sig succ(Nat) -> Nat
     /// ```
-    pub fn parse_sig(&mut self) -> Result<Signature> {
-        self.expect(Token::Sig)?;
+    pub fn parse_sig(&mut self) -> Result<Spanned<Signature>> {
+        let sig_kw = self.expect(Token::Sig)?;
         let name = self.expect_identifier()?;
         self.expect(Token::LeftParenthesis)?;
 
@@ -399,17 +450,14 @@ impl<'a> Parser<'a> {
         self.expect(Token::Arrow)?;
 
         let return_type = self.parse_type()?;
+        let location = sig_kw.with(&return_type);
 
-        let signature = Signature {
-            name,
-            params,
-            return_type,
-        };
-        Ok(signature)
+        let signature = Signature { name, params, return_type };
+        Ok(Spanned::new(signature, location))
     }
 
-    /// Parses a Data Type
-    /// 
+    /// Parses a Data Type.
+    ///
     /// # Example
     /// ```
     /// data Maybe<a> {
@@ -417,8 +465,8 @@ impl<'a> Parser<'a> {
     ///     None(),
     /// }
     /// ```
-    pub fn parse_data(&mut self) -> Result<Data> {
-        self.expect(Token::Data)?;
+    pub fn parse_data(&mut self) -> Result<Spanned<Data>> {
+        let data_kw = self.expect(Token::Data)?;
         let name = self.expect_identifier()?;
 
         let mut params = Vec::new();
@@ -426,10 +474,10 @@ impl<'a> Parser<'a> {
         if self.is(Token::LessThan) {
             self.advance();
             while !self.is(Token::GreaterThan) {
-                match self.parse_type()? {
-                    Type::TypeVariable(type_variable) => {
+                match self.parse_type()?.value {
+                    TypeKind::TypeVariable(type_variable) => {
                         params.push(type_variable);
-                    },
+                    }
                     _ => return Err("Expected type variable".into()),
                 }
                 if self.is(Token::Comma) {
@@ -446,7 +494,7 @@ impl<'a> Parser<'a> {
         while !self.is(Token::RightBrace) {
             let name = self.expect_identifier()?;
             self.expect(Token::LeftParenthesis)?;
-            
+
             let mut types: Vec<Type> = Vec::new();
 
             while !self.is(Token::RightParenthesis) {
@@ -454,10 +502,7 @@ impl<'a> Parser<'a> {
             }
             self.expect(Token::RightParenthesis)?;
 
-            let ctor = Constructor {
-                name,
-                types,
-            };
+            let ctor = Constructor { name, types };
 
             ctors.push(ctor);
 
@@ -465,24 +510,22 @@ impl<'a> Parser<'a> {
                 self.advance();
             }
         }
-        self.expect(Token::RightBrace)?;
+        let r_brace = self.expect(Token::RightBrace)?;
 
-        let data = Data {
-            name,
-            params,
-            ctors,
-        };
-        Ok(data)
+        let data = Data { name, params, ctors };
+
+        let location = data_kw.with(&r_brace);
+        Ok(Spanned::new(data, location))
     }
 
-    /// Parses an Expression
-    /// 
+    /// Parses an Expression.
+    ///
     /// # Example
     /// ```
     /// |x| x + 1
     /// ```
     pub fn expr(&mut self) -> Result<Expr> {
-        match self.current {
+        match self.current.value {
             Token::LeftBrace => self.block(),
             Token::Match => self.match_expr(),
             Token::Pipe => self.lambda(),
@@ -490,7 +533,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parses a Statement
+    /// Parses a [StatementKind::Expr].
+    pub fn statement_expr(&mut self) -> Result<Statement> {
+        let expr = self.expr()?;
+        let location = expr.location;
+        let stmt = StatementKind::Expr(Box::new(expr));
+        Ok(Spanned::new(stmt, location))
+    }
+
+    /// Parses a Statement.
     ///
     /// # Examples
     ///
@@ -499,15 +550,34 @@ impl<'a> Parser<'a> {
     /// let x = 1 + 1;
     /// ```
     pub fn statement(&mut self) -> Result<Statement> {
-        match self.current {
+        match self.current.value {
             Token::Let => self.let_statement(),
-            _ => Ok(Statement::Expr(Box::new(self.expr()?)))
+            _ => self.statement_expr(),
         }
     }
 
     /// Parses a program and returns the root of the tree.
     pub fn parse(&mut self) -> Result<Expr> {
         self.expr()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Parser;
+
+    type Test = Result<(), String>;
+
+    #[test]
+    fn test() -> Test {
+        let source = "let x = x + 1;";
+
+        let mut parser = Parser::new(source);
+        let x = parser.statement()?;
+
+        println!("{:#?}", x);
+
+        Ok(())
     }
 }
 
@@ -675,9 +745,8 @@ mod test {
         );
 
         assert_eq!(expr, Ok(expected));
-        
+
         Ok(())
     }
 }
 */
-

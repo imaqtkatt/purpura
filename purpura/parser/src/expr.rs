@@ -27,11 +27,11 @@ pub type Statement = Spanned<StatementKind>;
 #[derive(Debug)]
 pub struct Arm {
     pub left: Box<Pattern>,
-    pub right: Box<ExprKind>,
+    pub right: Box<Expr>,
 }
 
 impl Arm {
-    pub fn new(left: Pattern, right: ExprKind) -> Self {
+    pub fn new(left: Pattern, right: Expr) -> Self {
         Self {
             left: Box::new(left),
             right: Box::new(right),
@@ -40,26 +40,31 @@ impl Arm {
 }
 
 #[derive(Debug)]
-pub enum Type {
+pub enum TypeKind {
     Identifier(String),
     Generic(String, Vec<Type>),
     TypeVariable(String),
 }
 
+pub type Type = Spanned<TypeKind>;
+
 #[derive(Debug)]
 pub enum FnBody {
-    Block(Vec<StatementKind>),
-    Expr(Box<ExprKind>),
+    Block(Vec<Statement>),
+    Expr(Box<Expr>),
 }
 
 #[derive(Debug)]
-pub enum Pattern {
+pub enum PatternKind {
     Wildcard,
     Identifier(String),
     Number(u64),
     String(String),
     Application(String, Vec<Pattern>),
 }
+
+/// A Pattern with a location.
+pub type Pattern = Spanned<PatternKind>;
 
 #[derive(Debug)]
 pub struct Signature {
