@@ -101,6 +101,17 @@ pub enum Operator {
     Min,
     Greater,
     Lesser,
+    GreaterEqual,
+    LessEqual,
     And,
     Or,
+}
+
+/// An enum containing the top levels of the language.
+#[derive(Debug)]
+pub enum TopLevelKind {
+    Data(Spanned<Data>),
+    FnDecl(Spanned<Fn>),
+    Sig(Spanned<Signature>),
+    Stmt(Statement),
 }

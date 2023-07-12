@@ -3,19 +3,20 @@
 
 pub mod expr;
 pub mod spanned;
+pub mod program;
 
 use crate::expr::*;
 
 use expr::{PatternKind, StatementKind, TypeKind};
 use lexer::{token::Token, Lexer};
-use location::{Spanned};
+use location::Spanned;
 use spanned::{Span, LocWith};
 
 type Result<T> = std::result::Result<T, String>;
 
 const PRECEDENCE_TABLE: &[&[Token]] = &[
     &[Token::AndAnd, Token::PipePipe],
-    &[Token::GreaterThan, Token::LessThan],
+    &[Token::GreaterThan, Token::LessThan, Token::GreaterEqual, Token::LessEqual],
     &[Token::Plus, Token::Minus],
     &[Token::Mul, Token::Div],
 ];
@@ -117,6 +118,8 @@ impl<'a> Parser<'a> {
             Token::Minus => Ok(Operator::Min),
             Token::GreaterThan => Ok(Operator::Greater),
             Token::LessThan => Ok(Operator::Lesser),
+            Token::GreaterEqual => Ok(Operator::GreaterEqual),
+            Token::LessEqual => Ok(Operator::LessEqual),
             Token::PipePipe => Ok(Operator::Or),
             Token::AndAnd => Ok(Operator::And),
             _ => Err("Expected operator".into()),
@@ -150,10 +153,6 @@ impl<'a> Parser<'a> {
 
             let r_paren = self.expect(Token::RightParenthesis)?;
 
-            // let spanned = Spanned {
-            //     value: ExprKind::Application(Box::new(callee), args),
-            //     location: callee_location.mix(r_paren.location),
-            // };
             Ok(Spanned::new(
                 ExprKind::Application(Box::new(callee), args),
                 callee_location.with(&r_paren),
@@ -375,9 +374,10 @@ impl<'a> Parser<'a> {
         let expr_location = expr.location;
 
         let body = match expr {
-            Spanned { value: ExprKind::Block(block), .. } => {
-                FnBody::Block(block)
-            },
+            Spanned {
+                value: ExprKind::Block(block),
+                ..
+            } => FnBody::Block(block),
             other => FnBody::Expr(Box::new(other)),
         };
 
@@ -556,9 +556,35 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn top_level(&mut self) -> Result<TopLevelKind> {
+        match self.current.value {
+            Token::Data => {
+                let data = self.parse_data()?;
+                Ok(TopLevelKind::Data(data))
+            },
+            Token::Fn => {
+                let fun = self.parse_fn()?;
+                Ok(TopLevelKind::FnDecl(fun))
+            },
+            Token::Sig => {
+                let sig = self.parse_sig()?;
+                Ok(TopLevelKind::Sig(sig))
+            },
+            _ => {
+                let stmt = self.statement()?;
+                Ok(TopLevelKind::Stmt(stmt))
+            }
+        }
+    }
+
     /// Parses a program and returns the root of the tree.
-    pub fn parse(&mut self) -> Result<Expr> {
-        self.expr()
+    pub fn parse(&mut self) -> Result<program::Program> {
+        let mut decls = Vec::new();
+        while let Ok(tl) = self.top_level() {
+            decls.push(tl);
+        }
+        let program = program::Program { decls };
+        Ok(program)
     }
 }
 
@@ -570,12 +596,15 @@ mod test {
 
     #[test]
     fn test() -> Test {
-        let source = "let x = x + 1;";
+        let source = r#"sig id(a) -> a
+
+fn id(x) = x"#
+        .trim_start();
 
         let mut parser = Parser::new(source);
-        let x = parser.statement()?;
+        let x = parser.parse()?;
 
-        println!("{:#?}", x);
+        println!("{:#?}", x.decls);
 
         Ok(())
     }
