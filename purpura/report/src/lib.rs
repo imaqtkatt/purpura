@@ -1,5 +1,7 @@
 //! Module for diagnosing compile-time errors.
 
+use std::sync::mpsc;
+
 use location::Location;
 
 /// The severity of an error.
@@ -39,4 +41,25 @@ pub trait ToDiagnostic {
     fn severity(&self) -> Severity;
 
     fn location(&self) -> Location;
+}
+
+#[derive(Clone)]
+pub struct Reporter(mpsc::Sender<Box<dyn ToDiagnostic>>);
+
+impl Reporter {
+    pub fn new() -> (Self, mpsc::Receiver<Box<dyn ToDiagnostic>>) {
+        let (sender, receiver) = mpsc::channel();
+
+        (Self(sender), receiver)
+    }
+
+    pub fn report(&self, diag: impl ToDiagnostic + 'static) {
+        self.0.send(Box::new(diag)).unwrap();
+    }
+
+    pub fn to_stdout(receiver: mpsc::Receiver<Box<dyn ToDiagnostic>>) {
+        for diag in receiver.try_iter() {
+            println!("{:?}", diag.message());
+        }
+    }
 }
