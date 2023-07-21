@@ -195,15 +195,12 @@ impl<'a> Lexer<'a> {
                 },
                 _ => {
                     let token = self.next_token();
-                    match token {
-                        other => {
-                            let end = self.current_position;
-                            Spanned {
-                                value: other,
-                                location: Location { start: Byte(start), end: Byte(end) },
-                            }
-                        }
-                    }
+                    let end = self.current_position;
+
+                    Spanned {
+                        value: token,
+                        location: Location { start: Byte(start), end: Byte(end) },
+                    }   
                 }
             }
         } else {
