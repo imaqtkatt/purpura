@@ -41,9 +41,9 @@ impl Arm {
 
 #[derive(Debug)]
 pub enum TypeKind {
-    Identifier(String),
     Generic(String, Vec<Type>),
     TypeVariable(String),
+    Arrow(Box<Type>, Box<Type>),
 }
 
 pub type Type = Spanned<TypeKind>;

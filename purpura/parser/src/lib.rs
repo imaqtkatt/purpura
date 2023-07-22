@@ -385,6 +385,32 @@ impl<'a> Parser<'a> {
         Ok(Spanned::new(fun, fn_kw.with(&expr_location)))
     }
 
+    /// Parses an arrow type.
+    /// 
+    /// # Example
+    /// ```
+    /// Nat -> Nat
+    /// ```
+    fn parse_type(&mut self) -> Result<Type> {
+        let left = self.parse_generic_type()?;
+        let left_location = left.location;
+
+        if self.is(Token::Arrow) {
+            self.advance();
+            let right = self.parse_type()?;
+            let right_location = right.location;
+
+            let arrow = Spanned::new(
+                TypeKind::Arrow(Box::new(left), Box::new(right)),
+                left_location.with(&right_location)
+            );
+
+            Ok(arrow)
+        } else {
+            Ok(left)
+        }
+    }
+
     /// Parses a Type.
     ///
     /// # Examples
@@ -393,7 +419,10 @@ impl<'a> Parser<'a> {
     /// Maybe<a> // Generic
     /// a        // TypeVariable
     /// ```
-    fn parse_type(&mut self) -> Result<Type> {
+    fn parse_generic_type(&mut self) -> Result<Type> {
+        if self.is(Token::Comma) {
+            self.advance();
+        }
         let type_location = self.current.location;
         let type_id = self.expect_identifier()?;
 
@@ -420,7 +449,7 @@ impl<'a> Parser<'a> {
         let first_char = type_id.chars().next().unwrap();
 
         if first_char.is_uppercase() {
-            Ok(Spanned::new(TypeKind::Identifier(type_id), type_location))
+            Ok(Spanned::new(TypeKind::Generic(type_id, vec![]), type_location))
         } else {
             Ok(Spanned::new(TypeKind::TypeVariable(type_id), type_location))
         }
@@ -441,9 +470,6 @@ impl<'a> Parser<'a> {
 
         while !self.is(Token::RightParenthesis) {
             params.push(self.parse_type()?);
-            if self.is(Token::Comma) {
-                self.advance();
-            }
         }
 
         self.expect(Token::RightParenthesis)?;
