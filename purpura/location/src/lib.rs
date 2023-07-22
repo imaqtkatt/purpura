@@ -12,11 +12,23 @@ pub struct Location {
     pub end: Byte,
 }
 
+impl Location {
+    pub fn ghost() -> Self {
+        Self { start: Byte(0), end: Byte(0) }
+    }
+}
+
 /// A value with a location
 #[derive(Debug)]
 pub struct Spanned<T> {
     pub value: T,
     pub location: Location,
+}
+
+impl<T> Spanned<T> {
+    pub fn map<U>(self, m: fn(T) -> U) -> Spanned<U> {
+        Spanned { value: m(self.value), location: self.location }
+    }
 }
 
 impl Location {
