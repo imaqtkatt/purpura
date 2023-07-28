@@ -1,0 +1,9 @@
+[package]
+name = "checker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+location = { path = "../location" }
+desugar = { path = "../desugar" }
+im-rc = { workspace = true }
