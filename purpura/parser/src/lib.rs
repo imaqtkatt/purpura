@@ -596,9 +596,11 @@ impl<'a> Parser<'a> {
                 let sig = self.parse_sig()?;
                 Ok(TopLevelKind::Sig(sig))
             },
+            Token::EOF => Err("Reached EOF".into()),
             _ => {
-                let stmt = self.statement()?;
-                Ok(TopLevelKind::Stmt(stmt))
+                panic!("Is not a top level token")
+                // let stmt = self.statement()?;
+                // Ok(TopLevelKind::Stmt(stmt))
             }
         }
     }

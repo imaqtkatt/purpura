@@ -113,5 +113,5 @@ pub enum TopLevelKind {
     Data(Spanned<Data>),
     FnDecl(Spanned<Fn>),
     Sig(Spanned<Signature>),
-    Stmt(Statement),
+    // Stmt(Statement), // Statements should only be allowed inside functions.
 }
