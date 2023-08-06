@@ -4,8 +4,9 @@ use location::{Location, Spanned};
 use crate::{
     elaborated as elab,
     env::Env,
+    infer::typ,
     types::{MonoType, PolyType, Type},
-    unify, infer::typ,
+    unify,
 };
 
 use super::Infer;
@@ -17,14 +18,8 @@ impl Infer for ExprKind {
         use ExprKind::*;
 
         match self {
-            Number(n) => (
-                elab::ExprKind::Number(n),
-                typ::type_number(),
-            ),
-            String(s) => (
-                elab::ExprKind::String(s.clone()),
-                typ::type_string(),
-            ),
+            Number(n) => (elab::ExprKind::Number(n), typ::type_number()),
+            String(s) => (elab::ExprKind::String(s.clone()), typ::type_string()),
             Identifier(name) => match env.get_variable(name.clone()) {
                 Some(t) => {
                     let tau = env.instantiate(t.clone());
@@ -58,7 +53,7 @@ impl Infer for ExprKind {
                     elab::ExprKind::Application(Box::new(elab_arrow), args),
                     t_e1,
                 )
-            },
+            }
             Lambda(x, e) => {
                 let new_hole = env.new_hole();
                 let polytype = PolyType::new(vec![], new_hole.clone());
@@ -70,8 +65,38 @@ impl Infer for ExprKind {
                 let arrow = Type::new(MonoType::Arrow(new_hole, inferred.1.clone()));
 
                 (elab::ExprKind::Lambda(x, Box::new(inferred.0)), arrow)
-            },
-            Match(_, _) => todo!(),
+            }
+            Match(scrutinee, arms) => {
+                let ret_type = env.new_hole();
+
+                let (elab_scrutinee, scrutinee_t) = scrutinee.infer(env.clone());
+
+                let mut values = Vec::new();
+
+                for arm in arms {
+                    let (bindings, pattern_type) = arm.left.infer(env.clone());
+
+                    let mut env = env.clone();
+                    for bind in bindings {
+                        let (name, monotype) = bind;
+
+                        let polytype = PolyType::new(vec![], monotype);
+                        env.add_variable(name, polytype);
+                    }
+
+                    let (elab_arm, t) = arm.right.infer(env.clone());
+                    values.push(elab_arm);
+
+                    unify::unify(env.clone(), scrutinee_t.clone(), pattern_type);
+                    unify::unify(env, ret_type.clone(), t);
+                }
+                let case_tree = elab::CaseTree { values };
+
+                (
+                    elab::ExprKind::Match(Box::new(elab_scrutinee), case_tree),
+                    ret_type,
+                )
+            }
             Block(stmts) => {
                 let mut ret_type = unit();
 
@@ -97,7 +122,10 @@ impl Infer for StatementKind {
 
     fn infer(self, mut env: Env) -> (Self::Out, Type) {
         match self {
-            StatementKind::Expr(_) => todo!(),
+            StatementKind::Expr(e) => {
+                let (inferred, t) = e.infer(env.clone());
+                ((elab::StatementKind::Expr(Box::new(inferred)), env), t)
+            }
             StatementKind::Let(bind, e) => {
                 env.enter_level();
                 let inferred = e.infer(env.clone());

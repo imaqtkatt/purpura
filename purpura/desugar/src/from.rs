@@ -19,19 +19,10 @@ impl From<expr::Fn> for desugar::FnClause {
 
 impl From<expr::FnBody> for desugar::FnBody {
     fn from(fn_body: expr::FnBody) -> Self {
-        match fn_body {
-            expr::FnBody::Block(block) => {
-                let foo = block
-                    .into_iter()
-                    .map(spanned_stmt_kind_to_desugar)
-                    .collect::<Vec<_>>();
-                desugar::FnBody::Block(foo)
-            }
-            expr::FnBody::Expr(e) => desugar::FnBody::Expr(Box::new(desugar::Expr {
-                value: e.value.into(),
-                location: e.location,
-            })),
-        }
+        desugar::FnBody(Box::new(desugar::Expr {
+            value: fn_body.value.into(),
+            location: fn_body.location,
+        }))
     }
 }
 
@@ -279,7 +270,9 @@ fn spanned_type_kind_to_desugar(tk: Spanned<expr::TypeKind>) -> Spanned<desugar:
     }
 }
 
-fn spanned_pattern_kind_to_desugar(pk: Spanned<expr::PatternKind>) -> Spanned<desugar::PatternKind> {
+fn spanned_pattern_kind_to_desugar(
+    pk: Spanned<expr::PatternKind>,
+) -> Spanned<desugar::PatternKind> {
     desugar::Pattern {
         value: pk.value.into(),
         location: pk.location,

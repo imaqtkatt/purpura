@@ -19,7 +19,7 @@ impl Location {
 }
 
 /// A value with a location
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Spanned<T> {
     pub value: T,
     pub location: Location,

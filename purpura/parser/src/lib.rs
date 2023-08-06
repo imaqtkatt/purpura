@@ -373,13 +373,7 @@ impl<'a> Parser<'a> {
         let expr = self.expr()?;
         let expr_location = expr.location;
 
-        let body = match expr {
-            Spanned {
-                value: ExprKind::Block(block),
-                ..
-            } => FnBody::Block(block),
-            other => FnBody::Expr(Box::new(other)),
-        };
+        let body = Box::new(expr);
 
         let fun = Fn { name, params, body };
         Ok(Spanned::new(fun, fn_kw.with(&expr_location)))

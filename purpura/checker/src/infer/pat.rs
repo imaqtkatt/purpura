@@ -46,7 +46,7 @@ impl Infer for Pattern {
 
                             for (name, typ) in m {
                                 if map.contains_key(&name) {
-                                    panic!("NAO SEI");
+                                    panic!("Duplicated variable '{name}'");
                                 } else {
                                     map.insert(name, typ);
                                 }

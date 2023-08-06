@@ -1,6 +1,6 @@
 use location::Spanned;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExprKind {
     Number(u64),
     String(String),
@@ -15,7 +15,7 @@ pub enum ExprKind {
 /// An Expression with a location.
 pub type Expr = Spanned<ExprKind>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StatementKind {
     Expr(Box<Expr>),
     Let(String, Expr),
@@ -24,7 +24,7 @@ pub enum StatementKind {
 /// A Statement with a location.
 pub type Statement = Spanned<StatementKind>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Arm {
     pub left: Box<Pattern>,
     pub right: Box<Expr>,
@@ -39,7 +39,7 @@ impl Arm {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeKind {
     Generic(String, Vec<Type>),
     TypeVariable(String),
@@ -48,13 +48,15 @@ pub enum TypeKind {
 
 pub type Type = Spanned<TypeKind>;
 
-#[derive(Debug)]
-pub enum FnBody {
-    Block(Vec<Statement>),
-    Expr(Box<Expr>),
-}
+// #[derive(Debug, Clone)]
+// pub enum FnBody {
+//     Block(Vec<Statement>),
+//     Expr(Box<Expr>),
+// }
 
-#[derive(Debug)]
+pub type FnBody = Box<Expr>;
+
+#[derive(Debug, Clone)]
 pub enum PatternKind {
     Wildcard,
     Identifier(String),
@@ -66,34 +68,34 @@ pub enum PatternKind {
 /// A Pattern with a location.
 pub type Pattern = Spanned<PatternKind>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Signature {
     pub name: String,
     pub params: Vec<Type>,
     pub return_type: Type,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Constructor {
     pub name: String,
     pub types: Vec<Type>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Data {
     pub name: String,
     pub params: Vec<String>,
     pub ctors: Vec<Constructor>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Fn {
     pub name: String,
     pub params: Vec<Pattern>,
     pub body: FnBody,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Operator {
     Mul,
     Div,
@@ -108,7 +110,7 @@ pub enum Operator {
 }
 
 /// An enum containing the top levels of the language.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TopLevelKind {
     Data(Spanned<Data>),
     FnDecl(Spanned<Fn>),

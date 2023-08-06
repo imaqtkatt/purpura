@@ -28,7 +28,7 @@ impl Ctx {
     }
 }
 
-trait Desugar {
+pub trait Desugar {
     type Out;
 
     fn desugar(self, ctx: &mut Ctx) -> Self::Out;
