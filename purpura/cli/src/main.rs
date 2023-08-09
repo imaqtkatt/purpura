@@ -1,8 +1,7 @@
-use checker::env::Env;
 use desugar::{Ctx, Desugar};
 use parser::Parser;
 
-use checker::infer::top_level::{Define, Declare};
+use checker::infer::top_level::{Declare, Define};
 
 fn main() {
     println!("Hello, world!");
@@ -11,10 +10,10 @@ fn main() {
 
 fn aksdhfk() {
     let s = r#"
-data Foo { Foo() }
-sig foo(a) -> a
-fn foo(x) = x
-"#;
+        data Foo { Foo() }
+        sig foo(a) -> a
+        fn foo(x) = x
+    "#;
     let mut p = Parser::new(s);
 
     let prog = p.parse().unwrap();
@@ -25,7 +24,7 @@ fn foo(x) = x
     let program = prog.desugar(&mut ctx);
     report::Reporter::to_stdout(receiver);
 
-    let mut checker_ctx = checker::env::Env::new();
+    let mut checker_ctx = checker::env::Env::default();
 
     for decl in program.decls.iter().cloned() {
         if let desugar::expr::TopLevelKind::Data(data) = decl {
@@ -50,6 +49,4 @@ fn foo(x) = x
             fn_decl.value.define(&mut checker_ctx);
         }
     }
-
-    // println!("program {:#?}", &program);
 }

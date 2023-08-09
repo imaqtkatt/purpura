@@ -1,6 +1,10 @@
 use desugar::expr::Pattern;
 
-use crate::{types::{Type, MonoType}, unify::unify, infer::typ};
+use crate::{
+    infer::typ,
+    types::{MonoType, Type},
+    unify::unify,
+};
 
 use super::Infer;
 
@@ -21,12 +25,12 @@ impl Infer for Pattern {
                 map.insert(id, hole.clone());
 
                 (map, hole)
-            },
+            }
             Application(ctor_name, args) => {
                 let Some((ctor, ctor_arity)) = env.ctor_decls.get(&ctor_name) else {
                     panic!("Constructor '{}' not found in context", ctor_name);
                 };
-                
+
                 let arity = args.len();
 
                 if *ctor_arity != arity {
@@ -51,12 +55,12 @@ impl Infer for Pattern {
                                     map.insert(name, typ);
                                 }
                             }
-                        },
+                        }
                         _ => unreachable!(),
                     }
                 }
                 (map, instantiated)
-            },
+            }
             Wildcard => (map, env.new_hole()),
         }
     }

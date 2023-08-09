@@ -1,7 +1,7 @@
-use location::Spanned;
 use desugar::expr::TypeKind;
+use location::Spanned;
 
-use crate::types::{Type, MonoType};
+use crate::types::{MonoType, Type};
 
 use super::Infer;
 
@@ -15,39 +15,48 @@ impl Infer for Spanned<TypeKind> {
     }
 }
 
-fn infer_type(type_kind: Spanned<TypeKind>, map: &mut im_rc::HashMap<String, Type>, env: crate::env::Env) -> std::rc::Rc<MonoType> {
+fn infer_type(
+    type_kind: Spanned<TypeKind>,
+    map: &mut im_rc::HashMap<String, Type>,
+    env: crate::env::Env,
+) -> std::rc::Rc<MonoType> {
     use TypeKind::*;
 
     match type_kind.value {
         Generic(name, args) => match env.type_decls.get(&name) {
-            Some(val) if !(*val == args.len()) => {
-                println!("Arity error, {}/{} != {}/{}", &name, &val, &name, args.len());
+            Some(val) if *val != args.len() => {
+                println!(
+                    "Arity error, {}/{} != {}/{}",
+                    &name,
+                    &val,
+                    &name,
+                    args.len()
+                );
                 Type::new(MonoType::Error)
-            },
+            }
             Some(_) => {
-                let args = args.into_iter()
+                let args = args
+                    .into_iter()
                     .map(|arg| infer_type(arg, map, env.clone()))
                     .collect::<Vec<_>>();
 
                 Type::new(MonoType::Ctor(name, args))
-            },
+            }
             None => Type::new(MonoType::Error),
         },
         TypeVariable(s) => {
-            if let Some(typ) = env.contains_type_variable(s.clone()) {
+            if let Some(typ) = env.get_type_variable(s) {
                 typ
             } else {
-                let new_hole = env.new_hole();
-                map.insert(s, new_hole.clone());
-                new_hole
+                panic!("cannot find type variable")
             }
-        },
+        }
         Arrow(left, right) => {
             let left = infer_type(*left, map, env.clone());
             let right = infer_type(*right, map, env);
 
             Type::new(MonoType::Arrow(left, right))
-        },
+        }
     }
 }
 

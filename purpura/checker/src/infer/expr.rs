@@ -1,5 +1,5 @@
 use desugar::expr::{ExprKind, StatementKind};
-use location::{Location, Spanned};
+use location::Spanned;
 
 use crate::{
     elaborated as elab,
@@ -19,11 +19,11 @@ impl Infer for ExprKind {
 
         match self {
             Number(n) => (elab::ExprKind::Number(n), typ::type_number()),
-            String(s) => (elab::ExprKind::String(s.clone()), typ::type_string()),
+            String(s) => (elab::ExprKind::String(s), typ::type_string()),
             Identifier(name) => match env.get_variable(name.clone()) {
                 Some(t) => {
                     let tau = env.instantiate(t.clone());
-                    (elab::ExprKind::Identifier(name.clone()), tau)
+                    (elab::ExprKind::Identifier(name), tau)
                 }
                 None => {
                     println!("Variable '{}' not found in ctx", name);
@@ -58,7 +58,7 @@ impl Infer for ExprKind {
                 let new_hole = env.new_hole();
                 let polytype = PolyType::new(vec![], new_hole.clone());
 
-                let mut new_env = env.clone();
+                let mut new_env = env;
                 new_env.add_variable(x.clone(), polytype);
 
                 let inferred = e.infer(new_env);
@@ -74,7 +74,7 @@ impl Infer for ExprKind {
                 let mut values = Vec::new();
 
                 for arm in arms {
-                    let (bindings, pattern_type) = arm.left.infer(env.clone());
+                    let (bindings, pattern_type) = arm.pattern.infer(env.clone());
 
                     let mut env = env.clone();
                     for bind in bindings {
@@ -84,7 +84,7 @@ impl Infer for ExprKind {
                         env.add_variable(name, polytype);
                     }
 
-                    let (elab_arm, t) = arm.right.infer(env.clone());
+                    let (elab_arm, t) = arm.body.infer(env.clone());
                     values.push(elab_arm);
 
                     unify::unify(env.clone(), scrutinee_t.clone(), pattern_type);
@@ -100,7 +100,7 @@ impl Infer for ExprKind {
             Block(stmts) => {
                 let mut ret_type = unit();
 
-                let mut env = env.clone();
+                let mut env = env;
 
                 let mut elab_stmts = Vec::new();
 
@@ -150,7 +150,7 @@ impl<T: Infer> Infer for Spanned<T> {
         let (value, t) = self.value.infer(env);
 
         let spanned = Spanned {
-            location: self.location.clone(),
+            location: self.location,
             value,
         };
 

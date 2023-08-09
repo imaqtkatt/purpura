@@ -2,21 +2,26 @@
 //! stream of tokens into a tree.
 
 pub mod expr;
-pub mod spanned;
 pub mod program;
+pub mod spanned;
 
 use crate::expr::*;
 
 use expr::{PatternKind, StatementKind, TypeKind};
 use lexer::{token::Token, Lexer};
 use location::Spanned;
-use spanned::{Span, LocWith};
+use spanned::{LocWith, Span};
 
 type Result<T> = std::result::Result<T, String>;
 
 const PRECEDENCE_TABLE: &[&[Token]] = &[
     &[Token::AndAnd, Token::PipePipe],
-    &[Token::GreaterThan, Token::LessThan, Token::GreaterEqual, Token::LessEqual],
+    &[
+        Token::GreaterThan,
+        Token::LessThan,
+        Token::GreaterEqual,
+        Token::LessEqual,
+    ],
     &[Token::Plus, Token::Minus],
     &[Token::Mul, Token::Div],
 ];
@@ -37,7 +42,11 @@ impl<'a> Parser<'a> {
         let current = lexer.next_token_spanned();
         let next = lexer.next_token_spanned();
 
-        Self { lexer, current, next }
+        Self {
+            lexer,
+            current,
+            next,
+        }
     }
 
     /// Returns true if the current token is the same as the `other`.
@@ -78,15 +87,15 @@ impl<'a> Parser<'a> {
     /// Parses a Primary Expression.
     fn primary(&mut self) -> Result<Expr> {
         let literal = match &self.current.value {
-            Token::Identifier(id) => Ok(Spanned::new(
+            Token::Identifier(id) => Ok(Spanned::with_span(
                 ExprKind::Identifier(id.clone()),
                 self.current.location,
             )),
-            Token::Number(num) => Ok(Spanned::new(
+            Token::Number(num) => Ok(Spanned::with_span(
                 ExprKind::Number(*num),
                 self.current.location,
             )),
-            Token::String(string) => Ok(Spanned::new(
+            Token::String(string) => Ok(Spanned::with_span(
                 ExprKind::String(string.clone()),
                 self.current.location,
             )),
@@ -95,8 +104,8 @@ impl<'a> Parser<'a> {
                 self.advance();
                 let expr = self.expr()?;
                 let end = self.expect(Token::RightParenthesis)?;
-                
-                return Ok(Spanned::new(expr.value, start.with(&end)));
+
+                return Ok(Spanned::with_span(expr.value, start.with(&end)));
             }
             _ => Err(format!("Expected a literal, got {:?}", self.current.value)),
         };
@@ -153,7 +162,7 @@ impl<'a> Parser<'a> {
 
             let r_paren = self.expect(Token::RightParenthesis)?;
 
-            Ok(Spanned::new(
+            Ok(Spanned::with_span(
                 ExprKind::Application(Box::new(callee), args),
                 callee_location.with(&r_paren),
             ))
@@ -183,7 +192,7 @@ impl<'a> Parser<'a> {
             let operator = self.operator()?;
             let right = self.infix(precedence + 1)?;
             let right_location = right.location;
-            left = Spanned::new(
+            left = Spanned::with_span(
                 ExprKind::Binary(operator, Box::new(left), Box::new(right)),
                 left_location.with(&right_location),
             );
@@ -206,7 +215,7 @@ impl<'a> Parser<'a> {
 
         let body_location = body.location;
 
-        Ok(Spanned::new(
+        Ok(Spanned::with_span(
             ExprKind::Lambda(identifier, Box::new(body)),
             pipe.with(&body_location),
         ))
@@ -235,7 +244,7 @@ impl<'a> Parser<'a> {
 
         let r_brace = self.expect(Token::RightBrace)?;
 
-        Ok(Spanned::new(
+        Ok(Spanned::with_span(
             ExprKind::Block(statements),
             l_brace.with(&r_brace),
         ))
@@ -244,21 +253,14 @@ impl<'a> Parser<'a> {
     /// Recursive function to parse a Pattern.
     fn pattern_of_expr(&self, expr: Expr) -> Result<Pattern> {
         let pattern = match expr.value {
-            ExprKind::Identifier(i) => Spanned::new(
-                PatternKind::Identifier(i),
-                expr.location,
-            ),
-            ExprKind::Number(n) => Spanned::new(
-                PatternKind::Number(n),
-                expr.location,
-            ),
-            ExprKind::String(s) => Spanned::new(
-                PatternKind::String(s),
-                expr.location,
-            ),
+            ExprKind::Identifier(i) => {
+                Spanned::with_span(PatternKind::Identifier(i), expr.location)
+            }
+            ExprKind::Number(n) => Spanned::with_span(PatternKind::Number(n), expr.location),
+            ExprKind::String(s) => Spanned::with_span(PatternKind::String(s), expr.location),
             ExprKind::Application(expr, exprs) => {
                 let identifier: Result<String> = match expr.value {
-                    ExprKind::Identifier(i) => Ok(i.clone()),
+                    ExprKind::Identifier(i) => Ok(i),
                     _ => Err("Expected identifier".into()),
                 };
                 let identifier = identifier?;
@@ -268,14 +270,11 @@ impl<'a> Parser<'a> {
                     params.push(self.pattern_of_expr(expr)?);
                 }
 
-                Spanned::new(
-                    PatternKind::Application(identifier, params),
-                    expr.location,
-                )
+                Spanned::with_span(PatternKind::Application(identifier, params), expr.location)
             }
             _ => return Err("Expected".into()),
         };
-        return Ok(pattern);
+        Ok(pattern)
     }
 
     /// Returns the Pattern of an Expression.
@@ -318,7 +317,7 @@ impl<'a> Parser<'a> {
 
         let r_brace = self.expect(Token::RightBrace)?;
 
-        Ok(Spanned::new(
+        Ok(Spanned::with_span(
             ExprKind::Match(Box::new(expr), patterns),
             match_kw.with(&r_brace),
         ))
@@ -338,7 +337,7 @@ impl<'a> Parser<'a> {
 
         let semicolon = self.expect(Token::Semicolon)?;
 
-        Ok(Spanned::new(
+        Ok(Spanned::with_span(
             StatementKind::Let(identifier, expr),
             let_kw.with(&semicolon),
         ))
@@ -376,11 +375,11 @@ impl<'a> Parser<'a> {
         let body = Box::new(expr);
 
         let fun = Fn { name, params, body };
-        Ok(Spanned::new(fun, fn_kw.with(&expr_location)))
+        Ok(Spanned::with_span(fun, fn_kw.with(&expr_location)))
     }
 
     /// Parses an arrow type.
-    /// 
+    ///
     /// # Example
     /// ```
     /// Nat -> Nat
@@ -394,9 +393,9 @@ impl<'a> Parser<'a> {
             let right = self.parse_type()?;
             let right_location = right.location;
 
-            let arrow = Spanned::new(
+            let arrow = Spanned::with_span(
                 TypeKind::Arrow(Box::new(left), Box::new(right)),
-                left_location.with(&right_location)
+                left_location.with(&right_location),
             );
 
             Ok(arrow)
@@ -434,18 +433,24 @@ impl<'a> Parser<'a> {
             let gt = self.expect(Token::GreaterThan)?;
             let location = type_location.with(&gt);
 
-            return Ok(Spanned::new(
+            return Ok(Spanned::with_span(
                 TypeKind::Generic(type_id, types),
-                location
+                location,
             ));
         }
 
         let first_char = type_id.chars().next().unwrap();
 
         if first_char.is_uppercase() {
-            Ok(Spanned::new(TypeKind::Generic(type_id, vec![]), type_location))
+            Ok(Spanned::with_span(
+                TypeKind::Generic(type_id, vec![]),
+                type_location,
+            ))
         } else {
-            Ok(Spanned::new(TypeKind::TypeVariable(type_id), type_location))
+            Ok(Spanned::with_span(
+                TypeKind::TypeVariable(type_id),
+                type_location,
+            ))
         }
     }
 
@@ -472,8 +477,12 @@ impl<'a> Parser<'a> {
         let return_type = self.parse_type()?;
         let location = sig_kw.with(&return_type);
 
-        let signature = Signature { name, params, return_type };
-        Ok(Spanned::new(signature, location))
+        let signature = Signature {
+            name,
+            params,
+            return_type,
+        };
+        Ok(Spanned::with_span(signature, location))
     }
 
     /// Parses a Data Type.
@@ -532,10 +541,14 @@ impl<'a> Parser<'a> {
         }
         let r_brace = self.expect(Token::RightBrace)?;
 
-        let data = Data { name, params, ctors };
+        let data = Data {
+            name,
+            params,
+            ctors,
+        };
 
         let location = data_kw.with(&r_brace);
-        Ok(Spanned::new(data, location))
+        Ok(Spanned::with_span(data, location))
     }
 
     /// Parses an Expression.
@@ -558,7 +571,7 @@ impl<'a> Parser<'a> {
         let expr = self.expr()?;
         let location = expr.location;
         let stmt = StatementKind::Expr(Box::new(expr));
-        Ok(Spanned::new(stmt, location))
+        Ok(Spanned::with_span(stmt, location))
     }
 
     /// Parses a Statement.
@@ -581,15 +594,15 @@ impl<'a> Parser<'a> {
             Token::Data => {
                 let data = self.parse_data()?;
                 Ok(TopLevelKind::Data(data))
-            },
+            }
             Token::Fn => {
                 let fun = self.parse_fn()?;
                 Ok(TopLevelKind::FnDecl(fun))
-            },
+            }
             Token::Sig => {
                 let sig = self.parse_sig()?;
                 Ok(TopLevelKind::Sig(sig))
-            },
+            }
             Token::EOF => Err("Reached EOF".into()),
             _ => {
                 panic!("Is not a top level token")
@@ -621,7 +634,7 @@ mod test {
         let source = r#"sig id(a) -> a
 
 fn id(x) = x"#
-        .trim_start();
+            .trim_start();
 
         let mut parser = Parser::new(source);
         let x = parser.parse()?;

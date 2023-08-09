@@ -4,7 +4,7 @@
 
 pub mod token;
 
-use location::{Spanned, Location, Byte};
+use location::{Byte, Location, Spanned};
 
 use crate::token::Token;
 
@@ -192,22 +192,28 @@ impl<'a> Lexer<'a> {
                 ' ' | '\t' | '\r' | '\n' | '\0' => {
                     self.consume();
                     self.next_token_spanned()
-                },
+                }
                 _ => {
                     let token = self.next_token();
                     let end = self.current_position;
 
                     Spanned {
                         value: token,
-                        location: Location { start: Byte(start), end: Byte(end) },
-                    }   
+                        location: Location {
+                            start: Byte(start),
+                            end: Byte(end),
+                        },
+                    }
                 }
             }
         } else {
             let end = self.current_position;
             Spanned {
                 value: Token::EOF,
-                location: Location { start: Byte(start), end: Byte(end) },
+                location: Location {
+                    start: Byte(start),
+                    end: Byte(end),
+                },
             }
         }
     }
@@ -313,10 +319,7 @@ mod test {
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
-        let expected_tokens = vec![
-            Token::GreaterThan,
-            Token::GreaterEqual,
-        ];
+        let expected_tokens = vec![Token::GreaterThan, Token::GreaterEqual];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -330,10 +333,7 @@ mod test {
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
-        let expected_tokens = vec![
-            Token::LessThan,
-            Token::LessEqual,
-        ];
+        let expected_tokens = vec![Token::LessThan, Token::LessEqual];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -544,13 +544,7 @@ mod test {
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
-        let expected_tokens = vec![
-            Token::Fn,
-            Token::Let,
-            Token::Match,
-            Token::Sig,
-            Token::Data,
-        ];
+        let expected_tokens = vec![Token::Fn, Token::Let, Token::Match, Token::Sig, Token::Data];
 
         assert_eq!(tokens, expected_tokens);
 
@@ -587,7 +581,7 @@ mod test {
             Token::Pipe,
             Token::Identifier("x".into()),
             Token::Pipe,
-            Token::Identifier("x".into())
+            Token::Identifier("x".into()),
         ];
 
         assert_eq!(tokens, expected_tokens);
@@ -627,4 +621,3 @@ mod test {
         Ok(())
     }
 }
-

@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
+mod debug;
 pub mod expr;
 pub mod from;
-mod debug;
 
 use expr as desugar;
-use location::{Spanned, Location};
+use location::{Location, Spanned};
 use report::ToDiagnostic;
 
 type FnClauses = Vec<desugar::FnClause>;
@@ -70,14 +70,14 @@ impl Desugar for parser::program::Program {
                         location: data.location,
                     };
                     ctx.data_types.insert(name, spanned);
-                },
+                }
                 TopLevelKind::Sig(sig_decl) => {
                     let name = sig_decl.value.name.clone();
 
-                    if let Some(_) = ctx.signatures.get_mut(&name) {
+                    if ctx.signatures.get_mut(&name).is_some() {
                         let err = DesugarErr(
                             format!("The signature '{}' was already defined.", name),
-                            sig_decl.location
+                            sig_decl.location,
                         );
                         ctx.reporter.report(err);
                     } else {
@@ -87,7 +87,7 @@ impl Desugar for parser::program::Program {
                         };
                         ctx.signatures.insert(name, spanned);
                     }
-                },
+                }
                 TopLevelKind::FnDecl(fn_decl) => {
                     let fn_name = fn_decl.value.name.clone();
 
@@ -96,7 +96,7 @@ impl Desugar for parser::program::Program {
                     } else {
                         ctx.fn_clauses.insert(fn_name, vec![fn_decl.value.into()]);
                     }
-                },
+                }
             }
         }
 
@@ -150,7 +150,7 @@ fn build_program(ctx: &mut Ctx) -> expr::Program {
 mod tests {
     use parser::Parser;
 
-    use crate::{Desugar, Ctx};
+    use crate::{Ctx, Desugar};
 
     #[test]
     fn aksdhfk() {
