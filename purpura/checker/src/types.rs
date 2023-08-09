@@ -28,6 +28,19 @@ impl PolyType {
     pub fn new(binds: Vec<String>, monotype: Type) -> Self {
         Self { binds, monotype }
     }
+
+    /// Instead of just instantiating the type with rules, this function skolemizes the type. that
+    /// means that it replaces all the bound variables with scoped variables.
+    pub(crate) fn skolemize(&self) -> Type {
+        use MonoType::*;
+
+        let mut subs = vec![];
+        for bind in &self.binds {
+            subs.push(Type::new(Var(bind.clone())));
+        }
+
+        self.monotype.clone().instantiate(&subs)
+    }
 }
 
 /// The content of a [Hole].

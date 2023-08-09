@@ -45,10 +45,10 @@ fn infer_type(
             None => Type::new(MonoType::Error),
         },
         TypeVariable(s) => {
-            if let Some(typ) = env.get_type_variable(s) {
+            if let Some(typ) = env.get_type_variable(s.clone()) {
                 typ
             } else {
-                panic!("cannot find type variable")
+                panic!("cannot find type variable '{:?}'", s)
             }
         }
         Arrow(left, right) => {

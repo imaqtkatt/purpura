@@ -62,7 +62,11 @@ impl Declare for Signature {
     fn declare(self, env: &mut Env) {
         let name = self.name.clone();
 
-        let free_variables = self.return_type.value.free_variables();
+        let mut free_variables = self.return_type.value.free_variables();
+
+        for arg in &self.params {
+            free_variables = free_variables.union(arg.value.free_variables());
+        }
 
         for (i, fv) in free_variables.iter().enumerate() {
             env.add_type_variable(fv.clone(), Type::new(MonoType::Generalized(i)));
@@ -97,7 +101,7 @@ impl Define for Fn {
             .unwrap_or_default();
 
         let sig_type = env.let_decls.get(&self.name).unwrap();
-        let sig_type = env.instantiate(sig_type.clone());
+        let sig_type = sig_type.skolemize();
 
         for clause in self.clauses {
             if clause.params.len() != params_size {
@@ -125,7 +129,7 @@ impl Define for Fn {
                 Type::new(MonoType::Arrow(sei_la, acc))
             });
 
-            unify::unify(env.clone(), sig_type.clone(), arrow);
+            unify::unify(env.clone(), arrow.clone(), sig_type.clone());
         }
     }
 }
