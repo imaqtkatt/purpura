@@ -1,3 +1,5 @@
+//! A bunch of implementations of display traits for the types in the type system.
+
 use std::fmt::Display;
 
 use crate::types::{HoleType, MonoType, PolyType};
@@ -25,16 +27,18 @@ trait FmtCtx {
 }
 
 impl FmtCtx for MonoType {
-    fn fmt_with_ctx(
-        &self, ctx:
-        &[String],
-        f: &mut std::fmt::Formatter<'_>
-    ) -> std::fmt::Result {
+    fn fmt_with_ctx(&self, ctx: &[String], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use MonoType::*;
 
         match self {
             Var(name) => write!(f, "{}", name.clone()),
-            Generalized(n) => write!(f, "{}", ctx[*n].clone()),
+            Generalized(n) => write!(
+                f,
+                "{}",
+                ctx.get(*n)
+                    .map(|x| format!("{}", x))
+                    .unwrap_or_else(|| "?".to_owned())
+            ),
             Hole(hole) => hole.get().fmt_with_ctx(ctx, f),
             Arrow(left, right) => {
                 write!(f, "(")?;
@@ -42,7 +46,7 @@ impl FmtCtx for MonoType {
                 write!(f, " -> ")?;
                 right.fmt_with_ctx(ctx, f)?;
                 write!(f, ")")
-            },
+            }
             Error => write!(f, "Error"),
             Ctor(name, vars) => {
                 write!(f, "(")?;
@@ -52,25 +56,21 @@ impl FmtCtx for MonoType {
                     var.fmt_with_ctx(ctx, f)?;
                 }
                 write!(f, ")")
-            },
+            }
         }
     }
 }
 
 impl FmtCtx for HoleType {
-    fn fmt_with_ctx(
-        &self,
-        ctx: &[String],
-        f: &mut std::fmt::Formatter<'_>
-    ) -> std::fmt::Result {
+    fn fmt_with_ctx(&self, ctx: &[String], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use HoleType::*;
-        
+
         match self {
             Unbound(name, level) => write!(f, "!{}~{}", name.clone(), level.0),
             Bound(t) => {
                 write!(f, "^")?;
                 t.fmt_with_ctx(ctx, f)
-            },
+            }
         }
     }
 }

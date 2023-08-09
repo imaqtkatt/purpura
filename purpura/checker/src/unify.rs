@@ -1,4 +1,7 @@
-use crate::{env::Env, types::{self, Type, Hole}};
+use crate::{
+    env::Env,
+    types::{self, Hole, Type},
+};
 
 pub fn unify(env: Env, t1: Type, t2: Type) {
     use types::MonoType::*;
@@ -15,7 +18,7 @@ pub fn unify(env: Env, t1: Type, t2: Type) {
         (Arrow(l1, r1), Arrow(l2, r2)) => {
             unify(env.clone(), l1.clone(), l2.clone());
             unify(env, r1.clone(), r2.clone());
-        },
+        }
 
         (_, _) => panic!("Type mismatch between '{}' and '{}'", &t1, &t2),
     }
@@ -31,7 +34,7 @@ pub fn unify_hole(env: Env, hole: Hole, val: Type, flip: bool) {
             } else {
                 *hole.get_mut() = Bound(val)
             }
-        },
+        }
         Bound(value) if flip => unify(env, val, value),
         Bound(value) => unify(env, value, val),
     }
@@ -43,9 +46,7 @@ fn occurs(hole: Hole, t: Type) -> bool {
     match &*t {
         Var(_) | Generalized(_) | Error => false,
         Hole(val) => val.clone() == hole,
-        Arrow(left, right) => {
-            occurs(hole.clone(), left.clone()) || occurs(hole.clone(), right.clone())
-        },
+        Arrow(left, right) => occurs(hole.clone(), left.clone()) || occurs(hole, right.clone()),
         Ctor(_, _) => todo!(),
     }
 }

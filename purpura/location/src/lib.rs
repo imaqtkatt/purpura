@@ -14,7 +14,10 @@ pub struct Location {
 
 impl Location {
     pub fn ghost() -> Self {
-        Self { start: Byte(0), end: Byte(0) }
+        Self {
+            start: Byte(0),
+            end: Byte(0),
+        }
     }
 }
 
@@ -27,7 +30,10 @@ pub struct Spanned<T> {
 
 impl<T> Spanned<T> {
     pub fn map<U>(self, m: fn(T) -> U) -> Spanned<U> {
-        Spanned { value: m(self.value), location: self.location }
+        Spanned {
+            value: m(self.value),
+            location: self.location,
+        }
     }
 }
 

@@ -2,7 +2,8 @@ use desugar::expr::{Data, Fn, Signature};
 
 use crate::{
     env::Env,
-    types::{MonoType, PolyType, Type}, unify,
+    types::{MonoType, PolyType, Type},
+    unify,
 };
 
 use super::Infer;
@@ -18,7 +19,7 @@ pub trait Define {
 impl Declare for Data {
     fn declare(self, env: &mut Env) {
         let arity = self.params.len();
-        let name = self.name.clone();
+        let name = self.name;
 
         env.type_decls.insert(name, arity);
     }
@@ -39,7 +40,7 @@ impl Define for Data {
             env.add_type_variable(name.clone(), t);
         });
 
-        let ret_type = Type::new(MonoType::Ctor(name.clone(), vars));
+        let ret_type = Type::new(MonoType::Ctor(name, vars));
 
         for ctor in self.ctors.into_iter() {
             let arity = ctor.types.len();
@@ -61,9 +62,16 @@ impl Declare for Signature {
     fn declare(self, env: &mut Env) {
         let name = self.name.clone();
 
+        let free_variables = self.return_type.value.free_variables();
+
+        for (i, fv) in free_variables.iter().enumerate() {
+            env.add_type_variable(fv.clone(), Type::new(MonoType::Generalized(i)));
+        }
+
         let (_, ret_type) = self.return_type.infer(env.clone());
 
         env.enter_level();
+
         let arrow = self
             .params
             .into_iter()
@@ -71,11 +79,12 @@ impl Declare for Signature {
             .rfold(ret_type, |acc, (_, n_t)| {
                 Type::new(MonoType::Arrow(n_t, acc))
             });
+
         env.leave_level();
 
-        let polytype = env.generalize(arrow);
+        let polytype = PolyType::new(free_variables.into_iter().collect(), arrow);
 
-        env.let_decls.insert(name.clone(), polytype);
+        env.let_decls.insert(name, polytype);
     }
 }
 
@@ -89,7 +98,7 @@ impl Define for Fn {
 
         let sig_type = env.let_decls.get(&self.name).unwrap();
         let sig_type = env.instantiate(sig_type.clone());
-        
+
         for clause in self.clauses {
             if clause.params.len() != params_size {
                 panic!("Params size not matches the clause size");
@@ -109,58 +118,14 @@ impl Define for Fn {
                     env.add_variable(name, polytype);
                 }
             }
+
             let (elab_arm, ret_type) = clause.body.0.infer(env.clone());
 
-            let arrow = types
-                .into_iter()
-                .rfold(ret_type, |acc, sei_la| {
-                    Type::new(MonoType::Arrow(sei_la, acc))
-                });
+            let arrow = types.into_iter().rfold(ret_type, |acc, sei_la| {
+                Type::new(MonoType::Arrow(sei_la, acc))
+            });
 
             unify::unify(env.clone(), sig_type.clone(), arrow);
         }
     }
 }
-
-/*
-#[cfg(test)]
-mod test {
-    use parser::Parser;
-
-    use crate::env::Env;
-
-    use super::{Define, Declare};
-
-    #[test]
-    fn testetetete() {
-        let s = "data Result<a, b> { Ok(a, b), Err(b) }";
-
-        let mut parser = Parser::new(s);
-
-        let data = parser.parse_data().unwrap();
-
-        let mut env = Env::new();
-
-        data.value.define(&mut env);
-
-        for variant in env.let_decls {
-            println!("name: {} : {}", variant.0, variant.1)
-        }
-    }
-
-    #[test]
-    fn testessadf() {
-        let s = "sig id(a, b) -> a";
-
-        let mut parser = Parser::new(s);
-
-        let sig = parser.parse_sig().unwrap();
-
-        let mut env = Env::new();
-
-        sig.value.declare(&mut env);
-
-        println!("{:#?}", env);
-    }
-}
-*/

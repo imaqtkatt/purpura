@@ -30,9 +30,13 @@ pub struct Marker {
 
 /// Defines an interface for errors during compilation process.
 pub trait ToDiagnostic {
-    fn code(&self) -> Option<usize> { None }
+    fn code(&self) -> Option<usize> {
+        None
+    }
 
-    fn hint(&self) -> Option<String> { None }
+    fn hint(&self) -> Option<String> {
+        None
+    }
 
     fn message(&self) -> String;
 

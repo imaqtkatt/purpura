@@ -1,9 +1,14 @@
+//! Environment for type checking. It contains a struct called [Env] that stores a bunch of things
+//! that are useful for type checking and inference.
+
 use std::{cell::RefCell, rc::Rc, str::FromStr};
 
 use location::Location;
 
 use crate::types::{Hole, HoleType, Level, MonoType, PolyType, Type};
 
+/// Main environment for type checking. It contains a bunch of things that are useful for type
+/// checking and inference.
 #[derive(Clone, Debug)]
 pub struct Env {
     pub variables: im_rc::HashMap<String, PolyType>,
@@ -18,26 +23,27 @@ pub struct Env {
 
 /// [Env] implementation for `variables` and `type_variables`.
 impl Env {
+    /// Adds a variable type to the environment
     pub fn add_variable(&mut self, name: String, polytype: PolyType) {
         self.variables.insert(name, polytype);
     }
 
+    /// Adds a monotype to the environment
     pub fn add(&mut self, name: String, monotype: Type) {
         self.add_variable(name, PolyType::new(vec![], monotype));
     }
 
+    /// Adds a type variable to the environment
     pub fn add_type_variable(&mut self, name: String, t: Type) {
         self.type_variables.insert(name, t);
     }
 
-    pub fn contains_type_variable(&self, name: String) -> Option<Type> {
+    /// Gets a type variable from the environment
+    pub fn get_type_variable(&self, name: String) -> Option<Type> {
         self.type_variables.get(&name).cloned()
     }
 
-    pub fn get_type_variable(&self, name: String) -> Option<&PolyType> {
-        self.variables.get(&name)
-    }
-
+    /// Gets a variable from the environment
     pub fn get_variable(&self, name: String) -> Option<&PolyType> {
         self.variables.get(&name)
     }
@@ -45,10 +51,12 @@ impl Env {
 
 /// [Env] implementation for `level`.
 impl Env {
+    /// Increases the level by one.
     pub fn enter_level(&self) {
         *self.level.borrow_mut() += 1;
     }
 
+    /// Decreases the level by one.
     pub fn leave_level(&self) {
         *self.level.borrow_mut() -= 1;
     }
@@ -56,6 +64,7 @@ impl Env {
 
 /// [Env] implementation to create new names and holes.
 impl Env {
+    /// Generates a new name for a type.
     pub fn new_name(&self) -> String {
         let mut counter = self.counter.borrow_mut();
         let name = String::from_str(&format!("t_{}", *counter)).unwrap();
@@ -63,6 +72,7 @@ impl Env {
         name
     }
 
+    /// Creates a new hole
     pub fn new_hole(&self) -> Type {
         let level = Level(*self.level.borrow());
         Type::new(MonoType::Hole(Hole::new(self.new_name(), level)))
@@ -71,20 +81,26 @@ impl Env {
 
 /// [Env] implementation for instantiation and generalization.
 impl Env {
+    /// Instantiates a polytype into a monotype by replacing all the bound variables with holes.
     pub fn instantiate(&self, polytype: PolyType) -> Type {
         let subs = polytype
             .binds
             .iter()
             .map(|_| self.new_hole())
             .collect::<Vec<_>>();
+
         polytype.monotype.instantiate(&subs)
     }
 
+    /// Generalizes a type by getting all free variables (holes) and filling it with a variable
+    /// that will be bind by a forall.
     pub fn generalize(&mut self, t: Type) -> PolyType {
         let mut counter = 0;
-        let names = (0..counter).map(|_| self.new_name()).collect::<Vec<_>>();
         let level = Level(*self.level.borrow());
+
         Self::gen(level, t.clone(), &mut counter);
+        let names = (0..counter).map(|_| self.new_name()).collect::<Vec<_>>();
+
         PolyType::new(names, t)
     }
 
@@ -97,23 +113,22 @@ impl Env {
                     let gen_level = *counter;
                     *counter += 1;
                     hole.fill(Type::new(MonoType::Generalized(gen_level)))
-                },
+                }
                 Unbound(_, _) => (),
                 Bound(t) => Self::gen(env_level, t, counter),
             },
             MonoType::Arrow(left, right) => {
                 Self::gen(env_level.clone(), left.clone(), counter);
                 Self::gen(env_level, right.clone(), counter);
-            },
+            }
             _ => (),
         }
     }
 }
 
-/// Implements `new` function for [Env].
-impl Env {
-    pub fn new() -> Self {
-        Self {
+impl Default for Env {
+    fn default() -> Self {
+        Env {
             variables: Default::default(),
             type_variables: Default::default(),
             let_decls: Default::default(),

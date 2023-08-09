@@ -32,11 +32,11 @@ impl From<expr::PatternKind> for desugar::PatternKind {
 
         match pattern_kind {
             PatternKind::Wildcard => desugar::PatternKind::Wildcard,
-            PatternKind::Identifier(id) => desugar::PatternKind::Identifier(id.clone()),
+            PatternKind::Identifier(id) => desugar::PatternKind::Identifier(id),
             PatternKind::Number(n) => desugar::PatternKind::Number(n),
-            PatternKind::String(s) => desugar::PatternKind::String(s.clone()),
+            PatternKind::String(s) => desugar::PatternKind::String(s),
             PatternKind::Application(name, args) => {
-                let name = name.clone();
+                let name = name;
 
                 let args = args
                     .into_iter()
@@ -86,11 +86,11 @@ impl From<expr::ExprKind> for desugar::ExprKind {
                 desugar::ExprKind::Application(spanned_op, vec![e1, e2])
             }
             ExprKind::Lambda(x, e) => {
-                let expr = box_spanned_expr_to_desugar(e);
+                let expr = box_spanned_expr_to_desugar(*e);
                 desugar::ExprKind::Lambda(x, expr)
             }
             ExprKind::Application(e, args) => {
-                let expr = box_spanned_expr_to_desugar(e);
+                let expr = box_spanned_expr_to_desugar(*e);
 
                 let args = args
                     .into_iter()
@@ -100,7 +100,7 @@ impl From<expr::ExprKind> for desugar::ExprKind {
                 desugar::ExprKind::Application(expr, args)
             }
             ExprKind::Match(e, arms) => {
-                let expr = box_spanned_expr_to_desugar(e);
+                let expr = box_spanned_expr_to_desugar(*e);
 
                 let arms = arms.into_iter().map(Into::into).collect::<Vec<_>>();
 
@@ -127,11 +127,11 @@ impl From<expr::Arm> for desugar::Arm {
         let right_location = arm.right.location;
 
         desugar::Arm {
-            left: Box::new(Spanned {
+            pattern: Box::new(Spanned {
                 value: left,
                 location: left_location,
             }),
-            right: Box::new(Spanned {
+            body: Box::new(Spanned {
                 value: right,
                 location: right_location,
             }),
@@ -146,7 +146,7 @@ fn spanned_expr_kind_to_desugar(e: Spanned<expr::ExprKind>) -> Spanned<desugar::
     }
 }
 
-fn box_spanned_expr_to_desugar(e: Box<Spanned<expr::ExprKind>>) -> Box<Spanned<desugar::ExprKind>> {
+fn box_spanned_expr_to_desugar(e: Spanned<expr::ExprKind>) -> Box<Spanned<desugar::ExprKind>> {
     Box::new(Spanned {
         value: e.value.into(),
         location: e.location,
@@ -208,9 +208,9 @@ impl From<expr::TypeKind> for desugar::TypeKind {
         match type_kind {
             expr::TypeKind::TypeVariable(name) => desugar::TypeKind::TypeVariable(name),
             expr::TypeKind::Arrow(t1, t2) => {
-                let desugar_t1 = box_spanned_type_kind_to_desugar(t1);
+                let desugar_t1 = box_spanned_type_kind_to_desugar(*t1);
 
-                let desugar_t2 = box_spanned_type_kind_to_desugar(t2);
+                let desugar_t2 = box_spanned_type_kind_to_desugar(*t2);
 
                 desugar::TypeKind::Arrow(desugar_t1, desugar_t2)
             }
@@ -255,7 +255,7 @@ impl From<expr::Data> for desugar::Data {
 }
 
 fn box_spanned_type_kind_to_desugar(
-    tk: Box<Spanned<expr::TypeKind>>,
+    tk: Spanned<expr::TypeKind>,
 ) -> Box<Spanned<desugar::TypeKind>> {
     Box::new(Spanned {
         value: tk.value.into(),

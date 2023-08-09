@@ -1,10 +1,7 @@
-use std::{cell::RefCell, rc::Rc};
+//! Definitions of types used in the type checker. The type checker uses the a HIndley Milner type
+// system with some extensions.
 
-/// A trait that defines type behaviors.
-trait Types {
-    /// Returns the free variables of a type.
-    fn free_vars(&self) -> im_rc::HashSet<String>;
-}
+use std::{cell::RefCell, rc::Rc};
 
 /// A type without binds.
 #[derive(Debug)]
@@ -86,45 +83,10 @@ impl Level {
     }
 }
 
-impl Types for MonoType {
-    fn free_vars(&self) -> im_rc::HashSet<String> {
-        use MonoType::*;
-
-        match self {
-            Generalized(_) | Error => Default::default(),
-            Var(name) => im_rc::hashset![name.clone()],
-            Hole(hole) => hole.free_vars(),
-            Arrow(left, right) => {
-                let left = left.free_vars();
-                let right = right.free_vars();
-                left.union(right)
-            },
-            Ctor(_, _) => todo!(),
-        }
-    }
-}
-
-impl Types for Hole {
-    fn free_vars(&self) -> im_rc::HashSet<String> {
-        use HoleType::*;
-
-        match &*self.0.borrow_mut() {
-            Unbound(_, _) => Default::default(),
-            Bound(t) => t.free_vars(),
-        }
-    }
-}
-
-impl Types for PolyType {
-    fn free_vars(&self) -> im_rc::HashSet<String> {
-        self.monotype.free_vars()
-    }
-}
-
 impl MonoType {
     pub(crate) fn instantiate(self: Type, subs: &[Type]) -> Type {
-        use MonoType::*;
         use HoleType::*;
+        use MonoType::*;
 
         match &&*self {
             Var(_) | Error => self.clone(),
@@ -137,7 +99,7 @@ impl MonoType {
                 let left = left.clone().instantiate(subs);
                 let right = right.clone().instantiate(subs);
                 Type::new(Arrow(left, right))
-            },
+            }
             Ctor(_, _) => todo!(),
         }
     }
