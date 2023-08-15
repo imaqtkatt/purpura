@@ -1,7 +1,10 @@
 use desugar::expr::TypeKind;
 use location::Spanned;
 
-use crate::types::{MonoType, Type};
+use crate::{
+    infer::errors::InferError,
+    types::{MonoType, Type},
+};
 
 use super::Infer;
 
@@ -25,13 +28,15 @@ fn infer_type(
     match type_kind.value {
         Generic(name, args) => match env.type_decls.get(&name) {
             Some(val) if *val != args.len() => {
-                println!(
+                let infer_error = InferError(format!(
                     "Arity error, {}/{} != {}/{}",
                     &name,
                     &val,
                     &name,
                     args.len()
-                );
+                ));
+                env.reporter.report(infer_error);
+                // println!("Arity error, {}/{} != {}/{}");
                 Type::new(MonoType::Error)
             }
             Some(_) => {
@@ -48,7 +53,10 @@ fn infer_type(
             if let Some(typ) = env.get_type_variable(s.clone()) {
                 typ
             } else {
-                panic!("cannot find type variable '{:?}'", s)
+                let err = InferError(format!("Could not find type variable '{:?}'", s));
+                env.reporter.report(err);
+                // panic!("cannot find type variable '{:?}'", s)
+                Type::new(MonoType::Error)
             }
         }
         Arrow(left, right) => {

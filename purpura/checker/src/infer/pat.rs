@@ -1,7 +1,7 @@
 use desugar::expr::Pattern;
 
 use crate::{
-    infer::typ,
+    infer::{typ, errors::InferError},
     types::{MonoType, Type},
     unify::unify,
 };
@@ -28,13 +28,19 @@ impl Infer for Pattern {
             }
             Application(ctor_name, args) => {
                 let Some((ctor, ctor_arity)) = env.ctor_decls.get(&ctor_name) else {
-                    panic!("Constructor '{}' not found in context", ctor_name);
+                    let err = InferError(format!("Constructor '{}' not found in context", ctor_name));
+                    // panic!("Constructor '{}' not found in context", ctor_name);
+                    env.reporter.report(err);
+                    return (map, Type::new(MonoType::Error))
                 };
 
                 let arity = args.len();
 
                 if *ctor_arity != arity {
-                    panic!("Arity error {} != {}", *ctor_arity, arity);
+                    let err = InferError(format!("Arity error for {} {} != {}", ctor_name, *ctor_arity, arity));
+                    // panic!("Arity error {} != {}", *ctor_arity, arity);
+                    env.reporter.report(err);
+                    return (map, Type::new(MonoType::Error))
                 }
 
                 let mut instantiated = env.instantiate(ctor.clone());
@@ -50,7 +56,9 @@ impl Infer for Pattern {
 
                             for (name, typ) in m {
                                 if map.contains_key(&name) {
-                                    panic!("Duplicated variable '{name}'");
+                                    let err = InferError(format!("Duplicated variable '{name}'"));
+                                    env.reporter.report(err);
+                                    // panic!("Duplicated variable '{name}'");
                                 } else {
                                     map.insert(name, typ);
                                 }

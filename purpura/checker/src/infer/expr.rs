@@ -4,7 +4,7 @@ use location::Spanned;
 use crate::{
     elaborated as elab,
     env::Env,
-    infer::typ,
+    infer::{typ, errors::InferError},
     types::{MonoType, PolyType, Type},
     unify,
 };
@@ -26,8 +26,10 @@ impl Infer for ExprKind {
                     (elab::ExprKind::Identifier(name), tau)
                 }
                 None => {
-                    println!("Variable '{}' not found in ctx", name);
-                    error()
+                    let err = InferError(format!("Variable '{}' not found in ctx", name));
+                    env.reporter.report(err);
+                    // println!("Variable '{}' not found in ctx", name);
+                    elab_error()
                 }
             },
             Application(e1, e2) => {
@@ -44,8 +46,10 @@ impl Infer for ExprKind {
                             args.push(elab_t_a);
                         }
                         _ => {
-                            println!("The type '{}' is not a function", t_e1);
-                            return error();
+                            let err = InferError(format!("The type '{}' is not a function", t_e1));
+                            env.reporter.report(err);
+                            // println!("The type '{}' is not a function", t_e1);
+                            return elab_error();
                         }
                     }
                 }
@@ -158,7 +162,7 @@ impl<T: Infer> Infer for Spanned<T> {
     }
 }
 
-fn error() -> (elab::ExprKind, std::rc::Rc<MonoType>) {
+fn elab_error() -> (elab::ExprKind, std::rc::Rc<MonoType>) {
     (elab::ExprKind::Error, Type::new(MonoType::Error))
 }
 
