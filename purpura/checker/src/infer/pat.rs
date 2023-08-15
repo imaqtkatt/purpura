@@ -29,7 +29,6 @@ impl Infer for Pattern {
             Application(ctor_name, args) => {
                 let Some((ctor, ctor_arity)) = env.ctor_decls.get(&ctor_name) else {
                     let err = InferError(format!("Constructor '{}' not found in context", ctor_name));
-                    // panic!("Constructor '{}' not found in context", ctor_name);
                     env.reporter.report(err);
                     return (map, Type::new(MonoType::Error))
                 };
@@ -38,7 +37,6 @@ impl Infer for Pattern {
 
                 if *ctor_arity != arity {
                     let err = InferError(format!("Arity error for {} {} != {}", ctor_name, *ctor_arity, arity));
-                    // panic!("Arity error {} != {}", *ctor_arity, arity);
                     env.reporter.report(err);
                     return (map, Type::new(MonoType::Error))
                 }
@@ -58,7 +56,6 @@ impl Infer for Pattern {
                                 if map.contains_key(&name) {
                                     let err = InferError(format!("Duplicated variable '{name}'"));
                                     env.reporter.report(err);
-                                    // panic!("Duplicated variable '{name}'");
                                 } else {
                                     map.insert(name, typ);
                                 }

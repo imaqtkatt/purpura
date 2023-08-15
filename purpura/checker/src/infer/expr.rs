@@ -28,7 +28,6 @@ impl Infer for ExprKind {
                 None => {
                     let err = InferError(format!("Variable '{}' not found in ctx", name));
                     env.reporter.report(err);
-                    // println!("Variable '{}' not found in ctx", name);
                     elab_error()
                 }
             },
@@ -48,7 +47,6 @@ impl Infer for ExprKind {
                         _ => {
                             let err = InferError(format!("The type '{}' is not a function", t_e1));
                             env.reporter.report(err);
-                            // println!("The type '{}' is not a function", t_e1);
                             return elab_error();
                         }
                     }

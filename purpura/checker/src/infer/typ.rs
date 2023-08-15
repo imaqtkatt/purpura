@@ -36,7 +36,6 @@ fn infer_type(
                     args.len()
                 ));
                 env.reporter.report(infer_error);
-                // println!("Arity error, {}/{} != {}/{}");
                 Type::new(MonoType::Error)
             }
             Some(_) => {
@@ -55,7 +54,6 @@ fn infer_type(
             } else {
                 let err = InferError(format!("Could not find type variable '{:?}'", s));
                 env.reporter.report(err);
-                // panic!("cannot find type variable '{:?}'", s)
                 Type::new(MonoType::Error)
             }
         }

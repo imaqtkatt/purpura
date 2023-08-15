@@ -5,7 +5,7 @@ use report::ToDiagnostic;
 /// A generic structure containing an inference error message.
 pub struct InferError(pub String);
 
-/// A generic structure containing an define error message.
+/// A generic structure containing a define error message.
 pub struct DefineError(pub String, pub location::Location);
 
 impl ToDiagnostic for InferError {

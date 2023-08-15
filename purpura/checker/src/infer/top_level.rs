@@ -112,7 +112,6 @@ impl Define for Fn {
                     location,
                 );
                 env.reporter.report(err);
-                // panic!("Params size not matches the clause size");
             }
 
             let mut env = env.clone();
