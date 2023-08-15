@@ -19,12 +19,12 @@ fn aksdhfk() {
     let prog = p.parse().unwrap();
 
     let (reporter, receiver) = report::Reporter::new();
-    let mut ctx = Ctx::new(reporter);
+    let mut ctx = Ctx::new(reporter.clone());
 
     let program = prog.desugar(&mut ctx);
     report::Reporter::to_stdout(receiver);
 
-    let mut checker_ctx = checker::env::Env::default();
+    let mut checker_ctx = checker::env::Env::new(reporter);
 
     for decl in program.decls.iter().cloned() {
         if let desugar::expr::TopLevelKind::Data(data) = decl {

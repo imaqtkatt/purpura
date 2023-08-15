@@ -9,7 +9,7 @@ use crate::types::{Hole, HoleType, Level, MonoType, PolyType, Type};
 
 /// Main environment for type checking. It contains a bunch of things that are useful for type
 /// checking and inference.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Env {
     pub variables: im_rc::HashMap<String, PolyType>,
     pub type_variables: im_rc::HashMap<String, Type>,
@@ -19,6 +19,7 @@ pub struct Env {
     pub level: RefCell<usize>,
     pub location: location::Location,
     pub counter: Rc<RefCell<usize>>,
+    pub reporter: report::Reporter,
 }
 
 /// [Env] implementation for `variables` and `type_variables`.
@@ -126,8 +127,8 @@ impl Env {
     }
 }
 
-impl Default for Env {
-    fn default() -> Self {
+impl Env {
+    pub fn new(reporter: report::Reporter) -> Self {
         Env {
             variables: Default::default(),
             type_variables: Default::default(),
@@ -137,6 +138,7 @@ impl Default for Env {
             location: Location::ghost(),
             counter: Rc::new(RefCell::new(0)),
             ctor_decls: Default::default(),
+            reporter,
         }
     }
 }

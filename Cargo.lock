@@ -47,6 +47,7 @@ dependencies = [
  "desugar",
  "im-rc",
  "location",
+ "report",
 ]
 
 [[package]]

@@ -2,6 +2,7 @@ use desugar::expr::{Data, Fn, Signature};
 
 use crate::{
     env::Env,
+    infer::errors::DefineError,
     types::{MonoType, PolyType, Type},
     unify,
 };
@@ -105,7 +106,12 @@ impl Define for Fn {
 
         for clause in self.clauses {
             if clause.params.len() != params_size {
-                panic!("Params size not matches the clause size");
+                let location = clause.body.0.location;
+                let err = DefineError(
+                    "Params size does not match the clause size".into(),
+                    location,
+                );
+                env.reporter.report(err);
             }
 
             let mut env = env.clone();
@@ -123,7 +129,7 @@ impl Define for Fn {
                 }
             }
 
-            let (elab_arm, ret_type) = clause.body.0.infer(env.clone());
+            let (_elab_arm, ret_type) = clause.body.0.infer(env.clone());
 
             let arrow = types.into_iter().rfold(ret_type, |acc, sei_la| {
                 Type::new(MonoType::Arrow(sei_la, acc))
