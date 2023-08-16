@@ -1,0 +1,13 @@
+
+data Result<a, e> {
+  Ok(a),
+  Error(e),
+}
+
+sig divide (Number, Number) -> Result<Number, String>
+
+fn divide (x, 0) = Error("Division by zero")
+fn divide (x, y) = {
+  let result = x / y;
+  Ok(result)
+}
