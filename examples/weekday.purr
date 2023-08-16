@@ -1,0 +1,20 @@
+
+data Weekday {
+  Monday(),
+  Tuesday(),
+  Wednesday(),
+  Thursday(),
+  Friday(),
+  Saturday(),
+  Sunday()
+}
+
+sig next_weekday (Weekday) -> Weekday
+
+fn next_weekday (Monday())    = Tuesday()
+fn next_weekday (Tuesday())   = Wednesday()
+fn next_weekday (Wednesday()) = Thursday()
+fn next_weekday (Thursday())  = Friday()
+fn next_weekday (Friday())    = Saturday()
+fn next_weekday (Saturday())  = Sunday()
+fn next_weekday (Sunday())    = Monday()
