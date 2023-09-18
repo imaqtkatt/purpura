@@ -28,7 +28,6 @@ impl PolyType {
     pub fn new(binds: Vec<String>, monotype: Type) -> Self {
         Self { binds, monotype }
     }
-
     /// Instead of just instantiating the type with rules, this function skolemizes the type. that
     /// means that it replaces all the bound variables with scoped variables.
     pub(crate) fn skolemize(&self) -> Type {
@@ -97,6 +96,22 @@ impl Level {
 }
 
 impl MonoType {
+    /// This function gets all the arguments of a type. For example, if the type is `a -> b -> c`,
+    /// then this function will return `[a, b]`.
+    pub(crate) fn get_arrow_args(self: Rc<MonoType>) -> Vec<Type> {
+        use MonoType::*;
+
+        let mut args = vec![];
+
+        let mut t = self.clone();
+        while let Arrow(left, right) = &*t {
+            args.push(left.clone());
+            t = right.clone();
+        }
+
+        args
+    }
+
     pub(crate) fn instantiate(self: Type, subs: &[Type]) -> Type {
         use HoleType::*;
         use MonoType::*;
