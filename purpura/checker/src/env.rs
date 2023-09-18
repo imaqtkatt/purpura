@@ -16,6 +16,7 @@ pub struct Env {
     pub let_decls: im_rc::HashMap<String, PolyType>,
     pub type_decls: im_rc::HashMap<String, usize>,
     pub ctor_decls: im_rc::HashMap<String, (PolyType, usize)>,
+    pub data_ctor_names: im_rc::HashMap<String, Vec<String>>,
     pub level: RefCell<usize>,
     pub location: location::Location,
     pub counter: Rc<RefCell<usize>>,
@@ -51,6 +52,22 @@ impl Env {
 
     pub fn get_ctor(&self, name: String) -> Option<&(PolyType, usize)> {
         self.ctor_decls.get(&name)
+    }
+
+    pub fn add_data_ctor_names(&mut self, data: String, names: Vec<String>) {
+        self.data_ctor_names.insert(data.clone(), names);
+    }
+
+    pub fn get_data_ctors(&self, data: String) -> Option<Vec<&(PolyType, usize)>> {
+        let ctors = self.data_ctor_names.get(&data)?;
+
+        let mut data_ctors = Vec::new();
+        for ctor in ctors {
+            let c = self.ctor_decls.get(ctor).unwrap();
+            data_ctors.push(c);
+        }
+
+        Some(data_ctors)
     }
 }
 
@@ -138,6 +155,7 @@ impl Env {
             type_variables: Default::default(),
             let_decls: Default::default(),
             type_decls: Default::default(),
+            data_ctor_names: Default::default(),
             level: RefCell::new(Default::default()),
             location: Location::ghost(),
             counter: Rc::new(RefCell::new(0)),

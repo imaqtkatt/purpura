@@ -103,6 +103,29 @@ impl Matrix<Pattern> {
                 .collect(),
         )
     }
+
+    fn get_used_constructor(env: &Env, pattern: &Pattern) -> Option<String> {
+        match &pattern.value {
+            PatternKind::Application(name, _) => Some(name.clone()),
+            PatternKind::Identifier(id) => env.get_ctor(id.clone()).map(|_| id.clone()),
+            PatternKind::Wildcard => todo!(),
+            PatternKind::Number(_) => todo!(),
+            PatternKind::String(_) => todo!(),
+        }
+    }
+
+    pub fn get_used_constructors(&self, env: &Env) -> Vec<String> {
+        self.0
+            .iter()
+            .flat_map(|row| Self::get_used_constructor(env, &row.head().unwrap()))
+            .collect()
+    }
+
+    pub fn is_complete_type_sig(&self, env: &Env, name: String) {
+        let names = env.data_ctor_names.get(&name);
+
+        todo!()
+    }
 }
 
 pub struct Problem {
@@ -118,6 +141,10 @@ impl Problem {
 
     pub fn is_exhaustive(&self) -> bool {
         self.case.is_empty() || !self.matrix.0.is_empty()
+    }
+
+    fn current_type(&self) -> Type {
+        self.types.0.front().cloned().unwrap()
     }
 
     pub fn specialize(&self, case: Case<()>) -> Self {

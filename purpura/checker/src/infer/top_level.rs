@@ -22,6 +22,12 @@ impl Declare for Data {
         let arity = self.params.len();
         let name = self.name;
 
+        let mut ctor_names = Vec::new();
+        for ctor in self.ctors {
+            ctor_names.push(ctor.name)
+        }
+        env.add_data_ctor_names(name.clone(), ctor_names);
+
         env.type_decls.insert(name, arity);
     }
 }
