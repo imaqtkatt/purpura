@@ -1,5 +1,8 @@
 //! An elaborated tree that contains semantic information.
 
+pub mod exhaustive;
+pub mod case;
+
 use location::Spanned;
 
 use crate::types::Type;

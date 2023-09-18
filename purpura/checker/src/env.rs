@@ -48,6 +48,10 @@ impl Env {
     pub fn get_variable(&self, name: String) -> Option<&PolyType> {
         self.variables.get(&name)
     }
+
+    pub fn get_ctor(&self, name: String) -> Option<&(PolyType, usize)> {
+        self.ctor_decls.get(&name)
+    }
 }
 
 /// [Env] implementation for `level`.
