@@ -53,6 +53,6 @@ fn occurs(hole: Hole, t: Type) -> bool {
         Var(_) | Generalized(_) | Error => false,
         Hole(val) => val.clone() == hole,
         Arrow(left, right) => occurs(hole.clone(), left.clone()) || occurs(hole, right.clone()),
-        Ctor(_, _) => todo!(),
+        Ctor(_, args) => args.iter().any(|arg| occurs(hole.clone(), arg.clone())),
     }
 }

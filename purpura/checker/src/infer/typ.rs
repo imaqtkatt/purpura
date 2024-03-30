@@ -67,9 +67,9 @@ fn infer_type(
 }
 
 pub fn type_string() -> std::rc::Rc<MonoType> {
-    Type::new(MonoType::Var("String".into()))
+    Type::new(MonoType::Var("string".into()))
 }
 
 pub fn type_number() -> std::rc::Rc<MonoType> {
-    Type::new(MonoType::Var("Number".into()))
+    Type::new(MonoType::Var("number".into()))
 }

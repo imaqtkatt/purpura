@@ -113,7 +113,11 @@ impl MonoType {
                 let right = right.clone().instantiate(subs);
                 Type::new(Arrow(left, right))
             }
-            Ctor(_, _) => todo!(),
+            Ctor(name, types) => {
+                let instantiated_types =
+                    types.iter().map(|t| t.clone().instantiate(subs)).collect();
+                Type::new(Ctor(name.clone(), instantiated_types))
+            }
         }
     }
 }

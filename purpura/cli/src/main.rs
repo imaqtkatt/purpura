@@ -4,15 +4,13 @@ use parser::Parser;
 use checker::infer::top_level::{Declare, Define};
 
 fn main() {
-    println!("Hello, world!");
-    aksdhfk();
+    run();
 }
 
-fn aksdhfk() {
+fn run() {
     let s = r#"
-        data Foo { Foo() }
-        sig foo(a) -> a
-        fn foo(x) = x
+    sig batata(a) -> string
+    fn batata(_) = "oi"
     "#;
     let mut p = Parser::new(s);
 
@@ -22,7 +20,8 @@ fn aksdhfk() {
     let mut ctx = Ctx::new(reporter.clone());
 
     let program = prog.desugar(&mut ctx);
-    report::Reporter::to_stdout(receiver);
+
+    println!("{program:?}");
 
     let mut checker_ctx = checker::env::Env::new(reporter);
 
@@ -49,4 +48,6 @@ fn aksdhfk() {
             fn_decl.value.define(&mut checker_ctx);
         }
     }
+
+    report::Reporter::to_stdout(receiver);
 }

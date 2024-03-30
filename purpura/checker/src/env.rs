@@ -133,7 +133,11 @@ impl Env {
             variables: Default::default(),
             type_variables: Default::default(),
             let_decls: Default::default(),
-            type_decls: Default::default(),
+            type_decls: {
+              let mut hs: im_rc::HashMap<String, usize> = Default::default();
+              hs.insert(String::from("Number"), 0);
+              hs
+            },
             level: RefCell::new(Default::default()),
             location: Location::ghost(),
             counter: Rc::new(RefCell::new(0)),

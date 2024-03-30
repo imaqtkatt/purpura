@@ -75,6 +75,7 @@ impl Declare for Signature {
 
         let (_, ret_type) = self.return_type.infer(env.clone());
 
+        // println!("{ret_type:?}");
         env.enter_level();
 
         let arrow = self
@@ -131,9 +132,9 @@ impl Define for Fn {
 
             let (_elab_arm, ret_type) = clause.body.0.infer(env.clone());
 
-            let arrow = types.into_iter().rfold(ret_type, |acc, sei_la| {
-                Type::new(MonoType::Arrow(sei_la, acc))
-            });
+            let arrow = types
+                .into_iter()
+                .rfold(ret_type, |acc, next| Type::new(MonoType::Arrow(next, acc)));
 
             unify::unify(env.clone(), arrow.clone(), sig_type.clone());
         }
