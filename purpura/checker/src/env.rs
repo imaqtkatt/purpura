@@ -132,7 +132,18 @@ impl Env {
         Env {
             variables: Default::default(),
             type_variables: Default::default(),
-            let_decls: Default::default(),
+            let_decls: {
+                let mut hs: im_rc::HashMap<String, PolyType> = Default::default();
+                hs.insert(
+                    String::from("_sub"),
+                    PolyType::new(vec![], crate::infer::typ::type_arith()),
+                );
+                hs.insert(
+                    String::from("_add"),
+                    PolyType::new(vec![], crate::infer::typ::type_arith()),
+                );
+                hs
+            },
             type_decls: {
                 let mut hs: im_rc::HashMap<String, usize> = Default::default();
                 hs.insert(String::from("Number"), 0);

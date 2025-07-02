@@ -160,8 +160,8 @@ impl From<expr::Operator> for desugar::ExprKind {
         match op {
             expr::Operator::Mul => Identifier("_mul".into()),
             expr::Operator::Div => Identifier("_div".into()),
-            expr::Operator::Sum => Identifier("_sum".into()),
-            expr::Operator::Min => Identifier("_min".into()),
+            expr::Operator::Sum => Identifier("_add".into()),
+            expr::Operator::Min => Identifier("_sub".into()),
             expr::Operator::Greater => Identifier("_greater".into()),
             expr::Operator::Lesser => Identifier("_lesser".into()),
             expr::Operator::GreaterEqual => Identifier("_ge".into()),

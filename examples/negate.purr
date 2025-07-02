@@ -1,0 +1,8 @@
+data Bool {
+  True(),
+  False(),
+}
+
+sig negate (Bool) -> Bool
+fun negate (True())  = False()
+fun negate (False()) = True()

@@ -1,33 +1,24 @@
+use clap::Parser as ClapParser;
 use desugar::{Ctx, Desugar};
 use parser::Parser;
 
 use checker::infer::top_level::{Declare, Define};
+
+#[derive(clap::Parser)]
+struct Cli {
+    #[arg(short = 'f')]
+    file_path: std::path::PathBuf,
+}
 
 fn main() {
     run();
 }
 
 fn run() {
-    let s = r#"
-    data Bool {
-      True(),
-      False(),
-    }
+    let cli = Cli::parse();
+    let contents = std::fs::read_to_string(cli.file_path).expect("read file");
 
-    sig neg(Bool) -> Bool
-    fun neg(True())  = False()
-    fun neg(False()) = True()
-
-    data Option<a> {
-      Some(a),
-      None(),
-    }
-
-    sig unwrap(Option<Number>) -> Number
-    fun unwrap(Some(val)) = val
-    fun unwrap(None()) = 0
-    "#;
-    let mut p = Parser::new(s);
+    let mut p = Parser::new(&contents);
 
     let prog = p.parse().unwrap();
 

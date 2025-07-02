@@ -30,6 +30,17 @@ impl FmtCtx for MonoType {
     fn fmt_with_ctx(&self, ctx: &[String], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use MonoType::*;
 
+        fn need_parens(r#type: &MonoType) -> bool {
+            match r#type {
+                Arrow(..) => true,
+                Hole(hole) => match hole.get() {
+                    HoleType::Bound(ref r#type) => need_parens(r#type),
+                    HoleType::Unbound(..) => false,
+                },
+                Var(_) | Generalized(_) | Ctor(..) | Error => false,
+            }
+        }
+
         match self {
             Var(name) => write!(f, "{}", name.clone()),
             Generalized(n) => write!(
@@ -40,19 +51,26 @@ impl FmtCtx for MonoType {
                     .unwrap_or_else(|| "?".to_owned())
             ),
             Hole(hole) => hole.get().fmt_with_ctx(ctx, f),
-            Arrow(left, right) => {
+            Arrow(left, right) if need_parens(left) => {
                 write!(f, "(")?;
                 left.fmt_with_ctx(ctx, f)?;
+                write!(f, ")")?;
                 write!(f, " -> ")?;
-                right.fmt_with_ctx(ctx, f)?;
-                write!(f, ")")
+                right.fmt_with_ctx(ctx, f)
+            }
+            Arrow(left, right) => {
+                left.fmt_with_ctx(ctx, f)?;
+                write!(f, " -> ")?;
+                right.fmt_with_ctx(ctx, f)
             }
             Error => write!(f, "Error"),
             Ctor(name, vars) => {
-                write!(f, "(")?;
                 write!(f, "{}", name)?;
-                for var in vars {
-                    write!(f, " ")?;
+                write!(f, "(")?;
+                for (i, var) in vars.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, " ")?;
+                    }
                     var.fmt_with_ctx(ctx, f)?;
                 }
                 write!(f, ")")

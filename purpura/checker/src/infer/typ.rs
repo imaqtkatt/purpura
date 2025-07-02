@@ -73,3 +73,10 @@ pub fn type_string() -> std::rc::Rc<MonoType> {
 pub fn type_number() -> std::rc::Rc<MonoType> {
     Type::new(MonoType::Ctor("Number".into(), vec![]))
 }
+
+pub fn type_arith() -> Type {
+    Type::new(MonoType::Arrow(
+        type_number(),
+        Type::new(MonoType::Arrow(type_number(), type_number())),
+    ))
+}

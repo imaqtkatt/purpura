@@ -1,0 +1,5 @@
+sig fib (Number) -> Number
+
+fun fib (0) = 0
+fun fib (1) = 1
+fun fib (n) = fib(n - 1) + fib(n - 2)

@@ -1,4 +1,3 @@
-
 data Result<a, e> {
   Ok(a),
   Error(e),
