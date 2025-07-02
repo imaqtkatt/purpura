@@ -51,7 +51,7 @@ impl<'a> Lexer<'a> {
     fn read_identifier(&mut self) -> Token {
         let identifier = self.read_while(|c| c.is_ascii_alphabetic());
         match identifier.as_ref() {
-            "fn" => Token::Fn,
+            "fun" => Token::Fun,
             "let" => Token::Let,
             "match" => Token::Match,
             "sig" => Token::Sig,
@@ -539,12 +539,12 @@ mod test {
 
     #[test]
     fn reads_identifiers() -> Result<()> {
-        let source: String = "fn let match sig data".into();
+        let source: String = "fun let match sig data".into();
 
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
-        let expected_tokens = vec![Token::Fn, Token::Let, Token::Match, Token::Sig, Token::Data];
+        let expected_tokens = vec![Token::Fun, Token::Let, Token::Match, Token::Sig, Token::Data];
 
         assert_eq!(tokens, expected_tokens);
 

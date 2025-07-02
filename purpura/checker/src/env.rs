@@ -40,13 +40,13 @@ impl Env {
     }
 
     /// Gets a type variable from the environment
-    pub fn get_type_variable(&self, name: String) -> Option<Type> {
-        self.type_variables.get(&name).cloned()
+    pub fn get_type_variable(&self, name: &String) -> Option<Type> {
+        self.type_variables.get(name).cloned()
     }
 
     /// Gets a variable from the environment
-    pub fn get_variable(&self, name: String) -> Option<&PolyType> {
-        self.variables.get(&name)
+    pub fn get_variable(&self, name: &String) -> Option<&PolyType> {
+        self.variables.get(name)
     }
 }
 
@@ -134,9 +134,9 @@ impl Env {
             type_variables: Default::default(),
             let_decls: Default::default(),
             type_decls: {
-              let mut hs: im_rc::HashMap<String, usize> = Default::default();
-              hs.insert(String::from("Number"), 0);
-              hs
+                let mut hs: im_rc::HashMap<String, usize> = Default::default();
+                hs.insert(String::from("Number"), 0);
+                hs
             },
             level: RefCell::new(Default::default()),
             location: Location::ghost(),

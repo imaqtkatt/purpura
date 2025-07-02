@@ -49,7 +49,7 @@ fn infer_type(
             None => Type::new(MonoType::Error),
         },
         TypeVariable(s) => {
-            if let Some(typ) = env.get_type_variable(s.clone()) {
+            if let Some(typ) = env.get_type_variable(&s) {
                 typ
             } else {
                 let err = InferError(format!("Could not find type variable '{:?}'", s));
@@ -67,9 +67,9 @@ fn infer_type(
 }
 
 pub fn type_string() -> std::rc::Rc<MonoType> {
-    Type::new(MonoType::Var("string".into()))
+    Type::new(MonoType::Ctor("String".into(), vec![]))
 }
 
 pub fn type_number() -> std::rc::Rc<MonoType> {
-    Type::new(MonoType::Var("number".into()))
+    Type::new(MonoType::Ctor("Number".into(), vec![]))
 }

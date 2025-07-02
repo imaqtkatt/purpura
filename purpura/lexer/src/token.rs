@@ -4,7 +4,7 @@ use std::fmt::Display;
 pub enum Token {
     Identifier(String),
     Number(u64),
-    Fn,
+    Fun,
     Let,
     Match,
     Sig,
@@ -58,7 +58,7 @@ impl Display for Token {
         match self {
             Token::Identifier(str) => write!(f, "{}", str),
             Token::Number(num) => write!(f, "{}", num),
-            Token::Fn => write!(f, "fn"),
+            Token::Fun => write!(f, "fun"),
             Token::Let => write!(f, "let"),
             Token::Match => write!(f, "match"),
             Token::Sig => write!(f, "sig"),

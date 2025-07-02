@@ -347,10 +347,10 @@ impl<'a> Parser<'a> {
     ///
     /// # Example
     /// ```
-    /// fn succ(x) = x + 1
+    /// fun succ(x) = x + 1
     /// ```
     pub fn parse_fn(&mut self) -> Result<Spanned<Fn>> {
-        let fn_kw = self.expect(Token::Fn)?;
+        let fn_kw = self.expect(Token::Fun)?;
         let name = self.expect_identifier()?;
         self.expect(Token::LeftParenthesis)?;
 
@@ -595,7 +595,7 @@ impl<'a> Parser<'a> {
                 let data = self.parse_data()?;
                 Ok(TopLevelKind::Data(data))
             }
-            Token::Fn => {
+            Token::Fun => {
                 let fun = self.parse_fn()?;
                 Ok(TopLevelKind::FnDecl(fun))
             }
@@ -605,7 +605,7 @@ impl<'a> Parser<'a> {
             }
             Token::EOF => Err("Reached EOF".into()),
             _ => {
-                panic!("Is not a top level token")
+                panic!("Is not a top level token: {}", self.current.value)
                 // let stmt = self.statement()?;
                 // Ok(TopLevelKind::Stmt(stmt))
             }

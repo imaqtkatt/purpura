@@ -4,7 +4,7 @@ use location::Spanned;
 use crate::{
     elaborated as elab,
     env::Env,
-    infer::{typ, errors::InferError},
+    infer::{errors::InferError, typ},
     types::{MonoType, PolyType, Type},
     unify,
 };
@@ -20,19 +20,35 @@ impl Infer for ExprKind {
         match self {
             Number(n) => (elab::ExprKind::Number(n), typ::type_number()),
             String(s) => (elab::ExprKind::String(s), typ::type_string()),
-            Identifier(name) => match env.get_variable(name.clone()) {
+            Identifier(name) => match env.get_variable(&name) {
                 Some(t) => {
                     let tau = env.instantiate(t.clone());
                     (elab::ExprKind::Identifier(name), tau)
                 }
-                None => {
-                    let err = InferError(format!("Variable '{}' not found in ctx", name));
-                    env.reporter.report(err);
-                    elab_error()
-                }
+                None => match env.let_decls.get(&name).cloned() {
+                    Some(v) => {
+                        let tau = env.instantiate(v);
+                        (elab::ExprKind::Identifier(name), tau)
+                    }
+                    None => match env.ctor_decls.get(&name).cloned() {
+                        Some((t, _)) => {
+                            let tau = env.instantiate(t);
+                            (elab::ExprKind::Identifier(name), tau)
+                        }
+                        None => {
+                            let err = InferError(format!("Variable '{}' not found in ctx", name));
+                            env.reporter.report(err);
+                            elab_error()
+                        }
+                    },
+                },
             },
             Application(e1, e2) => {
+                println!("infer application:");
+                println!("e1 = {e1:?}");
+                println!("e2 = {e2:?}");
                 let (elab_arrow, mut t_e1) = e1.infer(env.clone());
+                println!("e1_t = {t_e1:}");
 
                 let mut args = Vec::new();
 

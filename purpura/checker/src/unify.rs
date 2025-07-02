@@ -25,6 +25,11 @@ fn unify_go(env: Env, t1: Type, t2: Type) -> bool {
             unify_go(env.clone(), l1.clone(), l2.clone()) && unify_go(env, r1.clone(), r2.clone())
         }
 
+        (Ctor(a, b), Ctor(c, d)) if *a == *c && b.len() == d.len() => b
+            .iter()
+            .zip(d)
+            .all(|(a, b)| unify_go(env.clone(), a.clone(), b.clone())),
+
         (_, _) => false,
     }
 }
