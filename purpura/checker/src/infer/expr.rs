@@ -1,4 +1,4 @@
-use desugar::expr::{ExprKind, StatementKind};
+use desugar::expr::{ExprKind, StatementKind, TypeKind};
 use location::Spanned;
 
 use crate::{
@@ -44,45 +44,43 @@ impl Infer for ExprKind {
                 },
             },
             Application(e1, e2) => {
-                println!("infer application:");
-                println!("e1 = {e1:?}");
-                println!("e2 = {e2:?}");
-                let (elab_arrow, mut t_e1) = e1.infer(env.clone());
-                println!("e1_t = {t_e1:}");
+                let (elab_arrow, t_e1) = e1.infer(env.clone());
+                // println!("callee type: {t_e1:?}");
 
                 let mut args = Vec::new();
 
+                let mut inferred_args = vec![];
+
                 for expr in e2 {
-                    match &*t_e1 {
-                        MonoType::Arrow(a, b) => {
-                            let (elab_t_a, t_a) = expr.infer(env.clone());
-                            unify::unify(env.clone(), t_a, a.clone());
-                            t_e1 = b.clone();
-                            args.push(elab_t_a);
-                        }
-                        _ => {
-                            let err = InferError(format!("The type '{}' is not a function", t_e1));
-                            env.reporter.report(err);
-                            return elab_error();
-                        }
-                    }
+                    let (elab_t_a, t_a) = expr.infer(env.clone());
+                    inferred_args.push(t_a);
+                    args.push(elab_t_a);
                 }
+
+                let return_type = env.new_hole();
+                let inferred_type = inferred_args
+                    .into_iter()
+                    .rfold(return_type.clone(), |acc, n| {
+                        Type::new(MonoType::Arrow(n, acc))
+                    });
+                unify::unify(env, inferred_type, t_e1);
+
                 (
                     elab::ExprKind::Application(Box::new(elab_arrow), args),
-                    t_e1,
+                    return_type,
                 )
             }
             Lambda(x, e) => {
                 let new_hole = env.new_hole();
-                let polytype = PolyType::new(vec![], new_hole.clone());
+                let polytype = MonoType::to_polytype(new_hole.clone());
 
                 let mut new_env = env;
                 new_env.add_variable(x.clone(), polytype);
 
-                let inferred = e.infer(new_env);
-                let arrow = Type::new(MonoType::Arrow(new_hole, inferred.1.clone()));
+                let (body, body_t) = e.infer(new_env);
+                let arrow = Type::new(MonoType::Arrow(new_hole, body_t.clone()));
 
-                (elab::ExprKind::Lambda(x, Box::new(inferred.0)), arrow)
+                (elab::ExprKind::Lambda(x, Box::new(body)), arrow)
             }
             Match(scrutinee, arms) => {
                 let ret_type = env.new_hole();
@@ -98,15 +96,14 @@ impl Infer for ExprKind {
                     for bind in bindings {
                         let (name, monotype) = bind;
 
-                        let polytype = PolyType::new(vec![], monotype);
-                        env.add_variable(name, polytype);
+                        env.add_variable(name, MonoType::to_polytype(monotype));
                     }
 
                     let (elab_arm, t) = arm.body.infer(env.clone());
                     values.push(elab_arm);
 
-                    unify::unify(env.clone(), scrutinee_t.clone(), pattern_type);
-                    unify::unify(env, ret_type.clone(), t);
+                    unify::unify(env.clone(), pattern_type, scrutinee_t.clone());
+                    unify::unify(env, t, ret_type.clone());
                 }
                 let case_tree = elab::CaseTree { values };
 
@@ -144,18 +141,17 @@ impl Infer for StatementKind {
                 let (inferred, t) = e.infer(env.clone());
                 ((elab::StatementKind::Expr(Box::new(inferred)), env), t)
             }
-            StatementKind::Let(bind, e) => {
+            StatementKind::Let(bind, value) => {
                 env.enter_level();
-                let inferred = e.infer(env.clone());
+                let (value, value_t) = value.infer(env.clone());
                 env.leave_level();
 
-                let generalized = env.generalize(inferred.1);
+                let generalized = env.generalize(value_t);
 
                 let mut new_env = env.clone();
                 new_env.add_variable(bind.clone(), generalized);
 
-                let stmt_kind = elab::StatementKind::Let(bind, inferred.0);
-                ((stmt_kind, new_env), unit())
+                ((elab::StatementKind::Let(bind, value), new_env), unit())
             }
         }
     }

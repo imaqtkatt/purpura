@@ -1,7 +1,7 @@
 use desugar::expr::Pattern;
 
 use crate::{
-    infer::{typ, errors::InferError},
+    infer::{errors::InferError, typ},
     types::{MonoType, Type},
     unify::unify,
 };
@@ -21,24 +21,26 @@ impl Infer for Pattern {
             String(_) => (map, typ::type_string()),
             Identifier(id) => {
                 let hole = env.new_hole();
-
                 map.insert(id, hole.clone());
-
                 (map, hole)
             }
             Application(ctor_name, args) => {
                 let Some((ctor, ctor_arity)) = env.ctor_decls.get(&ctor_name) else {
-                    let err = InferError(format!("Constructor '{}' not found in context", ctor_name));
+                    let err =
+                        InferError(format!("Constructor '{}' not found in context", ctor_name));
                     env.reporter.report(err);
-                    return (map, Type::new(MonoType::Error))
+                    return (map, MonoType::error());
                 };
 
                 let arity = args.len();
 
                 if *ctor_arity != arity {
-                    let err = InferError(format!("Arity error for {} {} != {}", ctor_name, *ctor_arity, arity));
+                    let err = InferError(format!(
+                        "Arity error for {} {} != {}",
+                        ctor_name, *ctor_arity, arity
+                    ));
                     env.reporter.report(err);
-                    return (map, Type::new(MonoType::Error))
+                    return (map, MonoType::error());
                 }
 
                 let mut instantiated = env.instantiate(ctor.clone());

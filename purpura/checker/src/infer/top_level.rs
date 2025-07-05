@@ -122,11 +122,8 @@ impl Define for Fn {
                 let (bindings, t) = pattern.infer(env.clone());
                 types.push(t);
 
-                for bind in bindings {
-                    let (name, monotype) = bind;
-
-                    let polytype = PolyType::new(vec![], monotype);
-                    env.add_variable(name, polytype);
+                for (name, monotype) in bindings {
+                    env.add_variable(name, MonoType::to_polytype(monotype));
                 }
             }
 
@@ -136,6 +133,7 @@ impl Define for Fn {
                 .into_iter()
                 .rfold(ret_type, |acc, next| Type::new(MonoType::Arrow(next, acc)));
 
+            println!("unify {arrow:?} with skolem {sig_type:?}");
             unify::unify(env.clone(), arrow.clone(), sig_type.clone());
         }
     }

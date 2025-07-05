@@ -14,6 +14,36 @@ pub enum MonoType {
     Error,
 }
 
+impl MonoType {
+    pub fn error() -> Type {
+        Type::new(Self::Error)
+    }
+
+    pub fn to_polytype(t: Rc<Self>) -> PolyType {
+        PolyType {
+            binds: vec![],
+            monotype: t,
+        }
+    }
+}
+
+impl PartialEq for MonoType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (MonoType::Var(x), MonoType::Var(y)) if x == y => true,
+            (MonoType::Generalized(x), MonoType::Generalized(y)) if x == y => true,
+            (MonoType::Hole(x), MonoType::Hole(y)) if x == y => true,
+            (MonoType::Arrow(a, b), MonoType::Arrow(c, d)) => a == c && b == d,
+            (MonoType::Ctor(a, b), MonoType::Ctor(c, d)) if a == c && b.len() == d.len() => {
+                b.iter().zip(d).all(|(x, y)| x == y)
+            }
+            (MonoType::Error, _) | (_, MonoType::Error) => false,
+
+            (_, _) => false,
+        }
+    }
+}
+
 /// A reference counted type.
 pub type Type = Rc<MonoType>;
 
@@ -81,7 +111,7 @@ impl Hole {
 }
 
 /// A De Bruijin level.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Level(pub usize);
 
 impl Level {

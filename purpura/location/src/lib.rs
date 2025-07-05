@@ -29,7 +29,7 @@ pub struct Spanned<T> {
 }
 
 impl<T> Spanned<T> {
-    pub fn map<U>(self, m: fn(T) -> U) -> Spanned<U> {
+    pub fn map<U>(self, m: impl FnOnce(T) -> U) -> Spanned<U> {
         Spanned {
             value: m(self.value),
             location: self.location,

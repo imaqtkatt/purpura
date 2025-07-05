@@ -119,10 +119,17 @@ impl Env {
                 Bound(t) => Self::gen(env_level, t, counter),
             },
             MonoType::Arrow(left, right) => {
-                Self::gen(env_level.clone(), left.clone(), counter);
+                Self::gen(env_level, left.clone(), counter);
                 Self::gen(env_level, right.clone(), counter);
             }
-            _ => (),
+            MonoType::Ctor(_, types) => {
+                for r#type in types {
+                    Self::gen(env_level, r#type.clone(), counter);
+                }
+            }
+            MonoType::Var(_) => (),
+            MonoType::Generalized(_) => (),
+            MonoType::Error => (),
         }
     }
 }
@@ -142,11 +149,20 @@ impl Env {
                     String::from("_add"),
                     PolyType::new(vec![], crate::infer::typ::type_arith()),
                 );
+                hs.insert(
+                    String::from("_mul"),
+                    PolyType::new(vec![], crate::infer::typ::type_arith()),
+                );
+                hs.insert(
+                    String::from("_div"),
+                    PolyType::new(vec![], crate::infer::typ::type_arith()),
+                );
                 hs
             },
             type_decls: {
                 let mut hs: im_rc::HashMap<String, usize> = Default::default();
                 hs.insert(String::from("Number"), 0);
+                hs.insert(String::from("String"), 0);
                 hs
             },
             level: RefCell::new(Default::default()),

@@ -39,6 +39,7 @@ fn run() {
 
     for decl in program.decls.iter().cloned() {
         if let desugar::expr::TopLevelKind::FnDecl(fn_decl) = decl {
+            println!("decl: {}", fn_decl.value.name);
             fn_decl.value.sig.declare(&mut checker_ctx);
         }
     }
@@ -51,6 +52,7 @@ fn run() {
 
     for decl in program.decls {
         if let desugar::expr::TopLevelKind::FnDecl(fn_decl) = decl {
+            println!("defn: {}", fn_decl.value.name);
             fn_decl.value.define(&mut checker_ctx);
         }
     }

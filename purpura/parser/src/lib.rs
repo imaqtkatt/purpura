@@ -413,6 +413,12 @@ impl<'a> Parser<'a> {
     /// a        // TypeVariable
     /// ```
     fn parse_generic_type(&mut self) -> Result<Type> {
+        if self.is(Token::LeftParenthesis) {
+            self.expect(Token::LeftParenthesis)?;
+            let t = self.parse_type()?;
+            self.expect(Token::RightParenthesis)?;
+            return Ok(t);
+        }
         if self.is(Token::Comma) {
             self.advance();
         }
@@ -615,8 +621,11 @@ impl<'a> Parser<'a> {
     /// Parses a program and returns the root of the tree.
     pub fn parse(&mut self) -> Result<program::Program> {
         let mut decls = Vec::new();
-        while let Ok(tl) = self.top_level() {
-            decls.push(tl);
+        {
+            while !self.is(Token::EOF) {
+                decls.push(self.top_level()?);
+            }
+            self.expect(Token::EOF)?;
         }
         let program = program::Program { decls };
         Ok(program)

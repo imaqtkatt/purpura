@@ -36,7 +36,7 @@ fn infer_type(
                     args.len()
                 ));
                 env.reporter.report(infer_error);
-                Type::new(MonoType::Error)
+                MonoType::error()
             }
             Some(_) => {
                 let args = args
@@ -46,7 +46,7 @@ fn infer_type(
 
                 Type::new(MonoType::Ctor(name, args))
             }
-            None => Type::new(MonoType::Error),
+            None => MonoType::error(),
         },
         TypeVariable(s) => {
             if let Some(typ) = env.get_type_variable(&s) {
@@ -54,7 +54,7 @@ fn infer_type(
             } else {
                 let err = InferError(format!("Could not find type variable '{:?}'", s));
                 env.reporter.report(err);
-                Type::new(MonoType::Error)
+                MonoType::error()
             }
         }
         Arrow(left, right) => {

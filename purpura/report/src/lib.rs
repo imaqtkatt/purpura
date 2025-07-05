@@ -63,7 +63,7 @@ impl Reporter {
 
     pub fn to_stdout(receiver: mpsc::Receiver<Box<dyn ToDiagnostic>>) {
         for diag in receiver.try_iter() {
-            println!("{:?}", diag.message());
+            println!("{}", diag.message());
         }
     }
 }
