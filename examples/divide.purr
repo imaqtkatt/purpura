@@ -5,8 +5,8 @@ data Result<a, e> {
 
 sig divide (Number, Number) -> Result<Number, String>
 
-fn divide (x, 0) = Error("Division by zero")
-fn divide (x, y) = {
+fun divide (x, 0) = Error("Division by zero")
+fun divide (x, y) = {
   let result = x / y;
   Ok(result)
 }

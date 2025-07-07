@@ -32,11 +32,23 @@ impl PartialEq for MonoType {
         match (self, other) {
             (MonoType::Var(x), MonoType::Var(y)) if x == y => true,
             (MonoType::Generalized(x), MonoType::Generalized(y)) if x == y => true,
+
             (MonoType::Hole(x), MonoType::Hole(y)) if x == y => true,
+            (MonoType::Hole(x), y) => match x.get() {
+                HoleType::Bound(x_inner) => x_inner.as_ref() == y,
+                HoleType::Unbound(..) => false,
+            },
+            (x, MonoType::Hole(y)) => match y.get() {
+                HoleType::Bound(y_inner) => x == y_inner.as_ref(),
+                HoleType::Unbound(..) => false,
+            },
+
             (MonoType::Arrow(a, b), MonoType::Arrow(c, d)) => a == c && b == d,
+
             (MonoType::Ctor(a, b), MonoType::Ctor(c, d)) if a == c && b.len() == d.len() => {
                 b.iter().zip(d).all(|(x, y)| x == y)
             }
+
             (MonoType::Error, _) | (_, MonoType::Error) => false,
 
             (_, _) => false,

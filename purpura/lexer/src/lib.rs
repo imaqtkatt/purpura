@@ -24,6 +24,10 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn peek(&mut self) -> Option<&char> {
+        self.source.peek()
+    }
+
     fn consume(&mut self) -> Option<char> {
         self.current_position += 1;
         self.source.next()
@@ -129,6 +133,7 @@ impl<'a> Lexer<'a> {
             }
             _ => {
                 let comment = self.read_while(|c| c != '\n');
+                self.consume();
                 Token::Comment(comment)
             }
         }
@@ -151,8 +156,24 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn skip_whitespaces(&mut self) {
+        _ = self.read_while(|c| c.is_ascii_whitespace());
+    }
+
+    fn skip(&mut self) {
+        loop {
+            match self.peek() {
+                Some(c) if c.is_ascii_whitespace() => _ = self.skip_whitespaces(),
+                Some('#') => _ = self.read_comment(),
+                None | _ => break,
+            }
+        }
+    }
+
     /// Reads a new token from the source code. It returns the next token and consumes it.
     pub fn next_token(&mut self) -> Token {
+        self.skip();
+
         if let Some(ch) = self.source.peek() {
             match ch {
                 // '\0' | ' ' | '\t' | '\n' | '\r' => self.skip(),
@@ -544,7 +565,13 @@ mod test {
         let lexer = Lexer::new(&source);
         let tokens: Vec<Token> = lexer.map(|t| t.value).collect();
 
-        let expected_tokens = vec![Token::Fun, Token::Let, Token::Match, Token::Sig, Token::Data];
+        let expected_tokens = vec![
+            Token::Fun,
+            Token::Let,
+            Token::Match,
+            Token::Sig,
+            Token::Data,
+        ];
 
         assert_eq!(tokens, expected_tokens);
 
