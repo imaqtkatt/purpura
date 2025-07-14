@@ -48,7 +48,7 @@ impl std::fmt::Display for TypeKind {
             },
             TypeKind::Arrow(a, b) if need_parens(a) => write!(f, "({a}) -> {b}"),
             TypeKind::Arrow(a, b) => write!(f, "{a} -> {b}"),
-            TypeKind::Generic(name, types) if types.len() == 0 => write!(f, "{name}"),
+            TypeKind::Generic(name, types) if types.is_empty() => write!(f, "{name}"),
             TypeKind::Generic(name, types) => {
                 write!(
                     f,
@@ -408,7 +408,17 @@ impl Infer for desugared::ExpressionKind {
     fn infer(self, env: TypeEnv, location: crate::location::Location) -> (Self::Out, Type) {
         match self {
             desugared::ExpressionKind::Ident(symbol) => {
-                match env.variables.get(symbol.as_str()).cloned() {
+                let mut scope = vec![&env.definitions, &env.variables];
+
+                let mut scheme = None;
+
+                while let Some(scope) = scope.pop()
+                    && scheme.is_none()
+                {
+                    scheme = scope.get(symbol.as_str());
+                }
+
+                match scheme.cloned() {
                     Some(s) => {
                         let t = env.instantiate(s);
                         ((), t)
@@ -728,7 +738,6 @@ impl Declare for desugared::Signature {
         );
 
         let mut next_env = env;
-        println!("def {name} : {}", scheme.r#type);
         next_env.definitions.insert_mut(name, scheme);
         next_env
     }

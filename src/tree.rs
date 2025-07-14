@@ -261,21 +261,19 @@ pub mod desugared {
     }
 
     impl Type {
-        pub fn free_variables<'a>(&'a self) -> indexmap::IndexSet<&'a str> {
+        pub fn free_variables(&self) -> indexmap::IndexSet<&str> {
             self.kind.free_variables()
         }
     }
 
     impl TypeKind {
-        pub fn free_variables<'a>(&'a self) -> indexmap::IndexSet<&'a str> {
+        pub fn free_variables(&self) -> indexmap::IndexSet<&str> {
             match self {
                 TypeKind::Var(symbol) => indexmap::indexset![symbol.as_str()],
                 TypeKind::Generic(_, items) => {
                     items.iter().flat_map(|i| i.free_variables()).collect()
                 }
-                TypeKind::Arrow(a, b) => {
-                    vec![a, b].iter().flat_map(|i| i.free_variables()).collect()
-                }
+                TypeKind::Arrow(a, b) => [a, b].iter().flat_map(|i| i.free_variables()).collect(),
             }
         }
     }

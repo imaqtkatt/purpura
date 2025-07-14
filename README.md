@@ -1,10 +1,6 @@
 # Purpura
 
-Purpura is a statically typed functional programming language, highly influenced by Rust and Erlang.
-
-## Goals
-
-The main goal of purpura lang is to be compiled into BEAM Bytecode, JavaScript or LLVM.
+Purpura is a statically typed functional programming language!
 
 ## Code Example
 
@@ -14,8 +10,11 @@ data Nat {
   Succ(Nat),
 }
 
-sig succ (Nat) -> Nat
+sig succ : Nat -> Nat
 
-fn succ (Zero())  = Succ(Zero())
-fn succ (Succ(s)) = Succ(succ(s))
+def succ nat =
+  match nat case {
+    Zero() => Succ(Zero()),
+    Succ(pred) => Succ(succ pred),
+  }
 ```

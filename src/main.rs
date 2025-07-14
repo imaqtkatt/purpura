@@ -54,7 +54,6 @@ fn run() {
                     desugared::TopLevel::Def(def) => def.define(env),
                 };
             }
-            // println!("{_desugared:?}");
         }
         Err(e) => {
             reporter.report(e);
