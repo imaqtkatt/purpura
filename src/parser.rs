@@ -232,7 +232,7 @@ impl<'a> Parser<'a> {
             lexer::TokenKind::Let => panic!(),
             lexer::TokenKind::Match => Precedence::Call,
             lexer::TokenKind::Case => Precedence::End,
-            lexer::TokenKind::Sig => panic!(),
+            lexer::TokenKind::Sig => Precedence::End,
             lexer::TokenKind::Data => panic!(),
             lexer::TokenKind::LParens => Precedence::Call,
             lexer::TokenKind::RParens => Precedence::End,

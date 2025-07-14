@@ -65,6 +65,28 @@ impl std::fmt::Display for TypeKind {
     }
 }
 
+impl PartialEq for TypeKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Var(l0), Self::Var(r0)) => l0 == r0,
+            (Self::Generalized(l0), Self::Generalized(r0)) => l0 == r0,
+            (Self::Hole(l0), Self::Hole(r0)) => l0 == r0,
+            (Self::Hole(a), b) => match a.get() {
+                HoleInner::Bound(inner) => &*inner == b,
+                HoleInner::Unbound(..) => false,
+            },
+            (a, Self::Hole(b)) => match b.get() {
+                HoleInner::Bound(inner) => &*inner == a,
+                HoleInner::Unbound(..) => false,
+            },
+            (Self::Arrow(l0, l1), Self::Arrow(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Generic(l0, l1), Self::Generic(r0, r1)) => l0 == r0 && l1 == r1,
+            (_, _) => false,
+            // _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum HoleInner {
     Bound(Type),
@@ -151,7 +173,7 @@ pub struct TypeEnv {
     pub(crate) datatypes: rpds::HashTrieMap<String, usize>,
     pub(crate) type_vars: rpds::HashTrieMap<String, Type>,
 
-    name: std::cell::RefCell<usize>,
+    name: std::rc::Rc<std::cell::RefCell<usize>>,
     level: std::cell::RefCell<usize>,
 
     unit_type: Type,
@@ -267,6 +289,10 @@ mod unification {
     }
 
     fn _unify(a: Type, b: Type, env: &TypeEnv) -> bool {
+        if std::rc::Rc::ptr_eq(&a, &b) {
+            return true;
+        }
+
         match (&*a, &*b) {
             (TypeKind::Var(a), TypeKind::Var(b)) if a == b => true,
 
@@ -331,7 +357,7 @@ mod unification {
 }
 
 mod errors {
-    use crate::report;
+    use crate::{checker::Type, report};
 
     pub struct ArityError {
         pub arity: usize,
@@ -380,6 +406,37 @@ mod errors {
         fn markers(&self) -> Vec<report::Marker> {
             vec![report::Marker::new(
                 format!("unbound name '{}'", self.name),
+                self.location,
+            )]
+        }
+
+        fn hint(&self) -> Option<String> {
+            None
+        }
+
+        fn location(&self) -> crate::location::Location {
+            self.location
+        }
+    }
+
+    pub struct TypeMismatch {
+        pub got: Type,
+        pub expected: Type,
+        pub location: crate::location::Location,
+    }
+
+    impl report::Diag for TypeMismatch {
+        fn severity(&self) -> report::Severity {
+            report::Severity::Error
+        }
+
+        fn message(&self) -> String {
+            "type mismatch".to_string()
+        }
+
+        fn markers(&self) -> Vec<report::Marker> {
+            vec![report::Marker::new(
+                format!("got {} but expected {}", self.got, self.expected),
                 self.location,
             )]
         }
@@ -526,13 +583,13 @@ impl Infer for desugared::ExpressionKind {
                 ((), return_type)
             }
             desugared::ExpressionKind::Block(statements) => {
-                let return_type = env.new_hole();
+                let mut return_type = env.unit_type.clone();
 
                 let mut env = env;
                 for statement in statements {
                     let (next_env, statement_type) = statement.infer(env, location);
                     env = next_env;
-                    unification::unify(statement_type, return_type.clone(), &env, location);
+                    return_type = statement_type;
                 }
 
                 ((), return_type)
@@ -588,15 +645,19 @@ impl Infer for desugared::PatternKind {
                     if let TypeKind::Arrow(a, b) = &*instantiated.clone() {
                         instantiated = b.clone();
 
-                        unification::unify(pattern_type, a.clone(), &env, pattern_location);
-
                         for (bind, t) in binds.iter() {
                             if m.contains_key(bind) {
-                                todo!()
+                                env.reporter.report(report::generic_report(
+                                    report::Severity::Warning,
+                                    format!("repeated bind '{bind}'"),
+                                    location,
+                                ));
                             } else {
                                 m.insert_mut(bind.clone(), t.clone());
                             }
                         }
+
+                        unification::unify(pattern_type, a.clone(), &env, pattern_location);
                     } else {
                         unreachable!()
                     }
@@ -605,7 +666,12 @@ impl Infer for desugared::PatternKind {
                 (m, instantiated)
             }
 
-            desugared::PatternKind::Annot(_pattern, _) => todo!(),
+            desugared::PatternKind::Annot(pattern, r#type) => {
+                let ((), inferred_type) = r#type.infer(env.clone(), location);
+                let (bindings, t) = pattern.check(inferred_type, &env, location);
+
+                (bindings, t)
+            }
         }
     }
 }
@@ -693,6 +759,73 @@ impl Infer for desugared::TypeKind {
     }
 }
 
+pub trait Check {
+    type Out;
+
+    fn check(
+        self,
+        r#type: Type,
+        env: &TypeEnv,
+        location: crate::location::Location,
+    ) -> (Self::Out, Type);
+}
+
+mod check_impl {
+    use crate::{
+        checker::{Check, Infer, Type, TypeEnv, TypeKind, errors, unification},
+        tree::desugared,
+    };
+
+    impl Check for desugared::Pattern {
+        type Out = rpds::HashTrieMap<String, Type>;
+
+        fn check(
+            self,
+            r#type: Type,
+            env: &TypeEnv,
+            _location: crate::location::Location,
+        ) -> (Self::Out, Type) {
+            self.kind.check(r#type, env, self.location)
+        }
+    }
+
+    impl Check for desugared::PatternKind {
+        type Out = rpds::HashTrieMap<String, Type>;
+
+        fn check(
+            self,
+            r#type: Type,
+            env: &TypeEnv,
+            location: crate::location::Location,
+        ) -> (Self::Out, Type) {
+            match (&self, &*r#type) {
+                (desugared::PatternKind::Number(_), t) if t == &*env.number_type => {
+                    (rpds::ht_map![], env.number_type.clone())
+                }
+                (desugared::PatternKind::String(_), t) if t == &*env.string_type => {
+                    (rpds::ht_map![], env.string_type.clone())
+                }
+                (_, _) => {
+                    let (bindings, pattern_type) = self.infer(env.clone(), location);
+
+                    unification::unify(pattern_type.clone(), r#type.clone(), env, location);
+
+                    if pattern_type == r#type {
+                        (bindings, r#type)
+                    } else {
+                        env.reporter.report(errors::TypeMismatch {
+                            got: pattern_type,
+                            expected: r#type,
+                            location,
+                        });
+                        (bindings, Type::new(TypeKind::Error))
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub trait Declare {
     fn declare(&self, env: TypeEnv) -> TypeEnv;
 }
@@ -713,21 +846,22 @@ impl Declare for desugared::Data {
 impl Declare for desugared::Signature {
     fn declare(&self, env: TypeEnv) -> TypeEnv {
         let name = self.name.name.clone();
+        let mut next_env = env.clone();
 
-        let mut env_mut = env.clone();
+        // let mut env_mut = env.clone();
         let free_variables = self.r#type.free_variables();
         for (i, name) in free_variables.iter().enumerate() {
-            env_mut
+            next_env
                 .type_vars
                 .insert_mut(name.to_string(), Type::new(TypeKind::Generalized(i)));
         }
 
-        env_mut.enter_level();
+        // env_mut.enter_level();
         let ((), internal_type) = self
             .r#type
             .clone()
-            .infer(env_mut.clone(), self.name.location);
-        env_mut.leave_level();
+            .infer(next_env.clone(), self.name.location);
+        // env_mut.leave_level();
 
         let scheme = Scheme::new(
             free_variables
@@ -736,8 +870,6 @@ impl Declare for desugared::Signature {
                 .collect::<Vec<_>>(),
             internal_type,
         );
-
-        let mut next_env = env;
         next_env.definitions.insert_mut(name, scheme);
         next_env
     }
@@ -759,9 +891,8 @@ impl Define for desugared::Data {
             .map(|(i, _)| Type::new(TypeKind::Generalized(i)))
             .collect::<Vec<_>>();
 
-        let mut env_mut = env.clone();
         scheme.iter().zip(vars.clone()).for_each(|(name, t)| {
-            env_mut.type_vars.insert_mut(name.clone(), t);
+            next_env.type_vars.insert_mut(name.clone(), t);
         });
         let return_type = Type::new(TypeKind::Generic(name.name, vars));
 
@@ -771,7 +902,7 @@ impl Define for desugared::Data {
             let (_, types): ((), Vec<Type>) = ctor
                 .types
                 .into_iter()
-                .map(|t| t.infer(env_mut.clone(), name.location))
+                .map(|t| t.infer(next_env.clone(), name.location))
                 .unzip();
             let arrow = types.into_iter().rfold(return_type.clone(), |acc, next| {
                 Type::new(TypeKind::Arrow(next, acc))
@@ -795,7 +926,7 @@ impl Define for desugared::Def {
         let body_location = self.body.location;
         let ((), body_type) = self.body.infer(env.clone(), name.location);
 
-        unification::unify(body_type, signature, &env, body_location);
+        unification::unify(signature, body_type, &env, body_location);
 
         env
     }

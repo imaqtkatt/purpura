@@ -1,4 +1,4 @@
-//! A simple file system for caching, a [FileId] is a representation of file that exists.
+//! A simple file system for caching, a [FileId] is a representation of a file that exists.
 
 use std::collections::BTreeMap;
 

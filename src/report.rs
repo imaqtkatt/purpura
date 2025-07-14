@@ -95,3 +95,33 @@ impl Reporter {
         }
     }
 }
+
+pub fn generic_report(
+    severity: Severity,
+    message: String,
+    location: crate::location::Location,
+) -> impl Diag + 'static {
+    (severity, message, location)
+}
+
+impl Diag for (Severity, String, crate::location::Location) {
+    fn severity(&self) -> Severity {
+        self.0
+    }
+
+    fn message(&self) -> String {
+        String::new()
+    }
+
+    fn markers(&self) -> Vec<Marker> {
+        vec![Marker::new(self.1.to_owned(), self.2)]
+    }
+
+    fn hint(&self) -> Option<String> {
+        None
+    }
+
+    fn location(&self) -> crate::location::Location {
+        self.2
+    }
+}
