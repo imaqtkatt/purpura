@@ -3,6 +3,8 @@ data Bool {
   False(),
 }
 
-sig negate (Bool) -> Bool
-fun negate (True())  = False()
-fun negate (False()) = True()
+sig negate : Bool -> Bool
+def negate = |bool| match bool case {
+  True() => False(),
+  False() => True(),
+}

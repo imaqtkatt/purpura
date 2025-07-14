@@ -1,0 +1,18 @@
+data Nat {
+  Zero(),
+  Succ(Nat),
+}
+
+data Box(a) {
+  Box(a),
+}
+
+sig unbox : Box(t) -> t
+def unbox box = match box case { Box(inner) => inner }
+
+sig pred : Nat -> Nat
+def pred x =
+  match x case {
+    Zero() => Zero(),
+    Succ(x) => x,
+  }

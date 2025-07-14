@@ -1,17 +1,23 @@
-[workspace]
-resolver = "2"
-members = [
-    "purpura/lexer",
-    "purpura/parser",
-    "purpura/location",
-    "purpura/report",
-    "purpura/checker",
-    "purpura/desugar",
-    "purpura/cli",
-]
+# [workspace]
+# resolver = "2"
+# members = [
+#     "purpura/lexer",
+#     "purpura/parser",
+#     "purpura/location",
+#     "purpura/report",
+#     "purpura/checker",
+#     "purpura/desugar",
+#     "purpura/cli",
+# ]
+[package]
+name = "purpura"
+version = "0.1.0"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[workspace.dependencies]
-ariadne = { version = "0.3.0", features = ["auto-color"] }
-im-rc = "15.1.0"
+[dependencies]
+ariadne = { version = "0.5.1", features = ["auto-color"] }
+clap = { version = "4.5.40", features = ["derive"] }
+indexmap = "2.10.0"
+rpds = "1.1.1"

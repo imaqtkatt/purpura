@@ -1,12 +1,10 @@
-data Result<a, e> {
+data Result(a, e) {
   Ok(a),
   Error(e),
 }
 
-sig divide (Number, Number) -> Result<Number, String>
-
-fun divide (x, 0) = Error("Division by zero")
-fun divide (x, y) = {
-  let result = x / y;
-  Ok(result)
+sig divide : Number -> Number -> Result(Number, String)
+def divide x y = match y case {
+  0 => Error("division by zero"),
+  y => Ok(x / y),
 }

@@ -1,17 +1,17 @@
-data Either<a, b> {
+data Either(a, b) {
   Left(a),
   Right(b),
 }
 
-data Option<a> {
+data Option(a) {
   Some(a),
   None(),
 }
 
 # this function had a bug where it called the unification function recursively and infinitely
-sig unwrap (Option<Number>) -> Number
-fun unwrap (x) =
-  match x {
-  | None() => x,
-  | Some(x) => x,
+sig unwrap : Option(Number) -> Number
+def unwrap x =
+  match x case {
+    None() => x,
+    Some(x) => x,
   }
