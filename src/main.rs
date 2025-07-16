@@ -40,6 +40,7 @@ fn run() {
                 TypeKind::unit(),
                 TypeKind::number(),
                 TypeKind::string(),
+                checker::builtin_definitions(),
                 reporter.clone(),
             );
             for def in desugared.definitions.iter() {

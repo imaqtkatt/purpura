@@ -1,4 +1,7 @@
-use crate::{report, tree::desugared};
+use crate::{
+    report,
+    tree::{desugared, elaborated},
+};
 
 #[derive(Debug)]
 pub enum TypeKind {
@@ -21,6 +24,13 @@ impl TypeKind {
 
     pub fn string() -> Type {
         Type::new(TypeKind::Generic("String".to_string(), vec![]))
+    }
+
+    pub fn arith() -> Type {
+        Type::new(TypeKind::Arrow(
+            TypeKind::number(),
+            Type::new(TypeKind::Arrow(TypeKind::number(), TypeKind::number())),
+        ))
     }
 }
 
@@ -68,9 +78,9 @@ impl std::fmt::Display for TypeKind {
 impl PartialEq for TypeKind {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Var(l0), Self::Var(r0)) => l0 == r0,
-            (Self::Generalized(l0), Self::Generalized(r0)) => l0 == r0,
-            (Self::Hole(l0), Self::Hole(r0)) => l0 == r0,
+            (Self::Var(a), Self::Var(b)) => a == b,
+            (Self::Generalized(a), Self::Generalized(b)) => a == b,
+            (Self::Hole(a), Self::Hole(b)) if a == b => true,
             (Self::Hole(a), b) => match a.get() {
                 HoleInner::Bound(inner) => &*inner == b,
                 HoleInner::Unbound(..) => false,
@@ -79,10 +89,9 @@ impl PartialEq for TypeKind {
                 HoleInner::Bound(inner) => &*inner == a,
                 HoleInner::Unbound(..) => false,
             },
-            (Self::Arrow(l0, l1), Self::Arrow(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Generic(l0, l1), Self::Generic(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Arrow(a, b), Self::Arrow(c, d)) => a == c && b == d,
+            (Self::Generic(a, b), Self::Generic(c, d)) => a == c && b == d,
             (_, _) => false,
-            // _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
 }
@@ -170,7 +179,7 @@ pub struct TypeEnv {
     pub(crate) variables: rpds::HashTrieMap<String, Scheme>,
     pub(crate) constructors: rpds::HashTrieMap<String, (Scheme, usize)>,
     pub(crate) definitions: rpds::HashTrieMap<String, Scheme>,
-    pub(crate) datatypes: rpds::HashTrieMap<String, usize>,
+    pub(crate) datatypes: rpds::HashTrieMap<String, Data>,
     pub(crate) type_vars: rpds::HashTrieMap<String, Type>,
 
     name: std::rc::Rc<std::cell::RefCell<usize>>,
@@ -183,18 +192,39 @@ pub struct TypeEnv {
     reporter: report::Reporter,
 }
 
+#[derive(Clone, Debug)]
+pub struct Data {
+    pub constructors: Vec<desugared::Constructor>,
+    pub arity: usize,
+}
+
+pub(crate) fn builtin_definitions() -> rpds::HashTrieMap<String, Scheme> {
+    rpds::ht_map![
+        "%add".to_string() => Scheme::new(vec![], TypeKind::arith()),
+        "%sub".to_string() => Scheme::new(vec![], TypeKind::arith()),
+        "%mul".to_string() => Scheme::new(vec![], TypeKind::arith()),
+        "%div".to_string() => Scheme::new(vec![], TypeKind::arith())
+    ]
+}
+
 impl TypeEnv {
     pub fn new(
         unit_type: Type,
         number_type: Type,
         string_type: Type,
+        builtins: rpds::HashTrieMap<String, Scheme>,
         reporter: report::Reporter,
     ) -> Self {
+        let datatypes = rpds::ht_map![
+            "Unit".to_string() => Data { constructors: vec![], arity: 0 },
+            "Number".to_string() => Data { constructors: vec![], arity: 0 },
+            "String".to_string() => Data { constructors: vec![], arity: 0 }
+        ];
         Self {
             variables: Default::default(),
             constructors: Default::default(),
-            definitions: Default::default(),
-            datatypes: rpds::ht_map!["Unit".to_string() => 0, "Number".to_string() => 0, "String".to_string() => 0],
+            definitions: builtins,
+            datatypes,
             type_vars: Default::default(),
             name: Default::default(),
             level: Default::default(),
@@ -452,15 +482,30 @@ mod errors {
 }
 
 impl Infer for desugared::Expression {
-    type Out = ();
+    type Out = elaborated::Expression;
 
     fn infer(self, env: TypeEnv, _location: crate::location::Location) -> (Self::Out, Type) {
-        self.kind.infer(env, self.location)
+        let location = self.location;
+        let (elab, r#type) = self.kind.infer(env, location);
+
+        let elab = elaborated::Expression {
+            location,
+            kind: Box::new(elab),
+            r#type: r#type.clone(),
+        };
+        (elab, r#type)
     }
 }
 
+fn infer_expr_error() -> (elaborated::ExpressionKind, Type) {
+    (
+        elaborated::ExpressionKind::Error,
+        Type::new(TypeKind::Error),
+    )
+}
+
 impl Infer for desugared::ExpressionKind {
-    type Out = ();
+    type Out = elaborated::ExpressionKind;
 
     fn infer(self, env: TypeEnv, location: crate::location::Location) -> (Self::Out, Type) {
         match self {
@@ -478,32 +523,40 @@ impl Infer for desugared::ExpressionKind {
                 match scheme.cloned() {
                     Some(s) => {
                         let t = env.instantiate(s);
-                        ((), t)
+                        (elaborated::ExpressionKind::Ident(symbol), t)
                     }
                     None => {
                         env.reporter.report(errors::UnboundName {
                             name: symbol.name.clone(),
                             location,
                         });
-                        ((), Type::new(TypeKind::Error))
+                        infer_expr_error()
                     }
                 }
             }
-            desugared::ExpressionKind::Number(_) => ((), env.number_type.clone()),
-            desugared::ExpressionKind::String(_) => ((), env.string_type.clone()),
+            desugared::ExpressionKind::Number(n) => (
+                elaborated::ExpressionKind::Number(n),
+                env.number_type.clone(),
+            ),
+            desugared::ExpressionKind::String(s) => (
+                elaborated::ExpressionKind::String(s),
+                env.string_type.clone(),
+            ),
             desugared::ExpressionKind::Constructor(symbol, expressions) => {
                 match env.constructors.get(symbol.as_str()).cloned() {
                     Some((_, arity)) if expressions.len() != arity => {
                         env.reporter.report(errors::ArityError { arity, location });
-                        ((), Type::new(TypeKind::Error))
+                        infer_expr_error()
                     }
                     Some((s, _)) => {
                         let mut t = env.instantiate(s);
 
+                        let mut elab_expressions = vec![];
                         for expression in expressions {
                             let expression_location = expression.location;
-                            let ((), expression_type) =
+                            let (elab_expression, expression_type) =
                                 expression.infer(env.clone(), expression_location);
+                            elab_expressions.push(elab_expression);
 
                             if let TypeKind::Arrow(a, b) = &*t.clone() {
                                 t = b.clone();
@@ -516,10 +569,16 @@ impl Infer for desugared::ExpressionKind {
                             }
                         }
 
-                        ((), t)
+                        let elab =
+                            elaborated::ExpressionKind::Constructor(symbol, elab_expressions);
+                        (elab, t)
                     }
                     None => {
-                        todo!("report missing constructor")
+                        env.reporter.report(errors::UnboundName {
+                            name: symbol.name.clone(),
+                            location: symbol.location,
+                        });
+                        infer_expr_error()
                     }
                 }
             }
@@ -530,31 +589,36 @@ impl Infer for desugared::ExpressionKind {
                 let mut new_env = env.clone();
                 new_env.variables.insert_mut(symbol.name.clone(), s);
 
-                let ((), body_type) = body.infer(new_env, location);
+                let (elab_body, body_type) = body.infer(new_env, location);
                 let arrow_type = Type::new(TypeKind::Arrow(hole, body_type));
 
-                ((), arrow_type)
+                let elab = elaborated::ExpressionKind::Lambda(symbol, elab_body);
+                (elab, arrow_type)
             }
             desugared::ExpressionKind::Application(fun, arg) => {
                 let fun_location = fun.location;
-                let ((), fun_type) = fun.infer(env.clone(), location);
-                let ((), arg_type) = arg.infer(env.clone(), location);
+                let (elab_fun, fun_type) = fun.infer(env.clone(), location);
+                let (elab_arg, arg_type) = arg.infer(env.clone(), location);
 
                 let return_type = env.new_hole();
                 let arrow_type = Type::new(TypeKind::Arrow(arg_type, return_type.clone()));
 
                 unification::unify(fun_type, arrow_type, &env, fun_location);
 
-                ((), return_type)
+                let elab = elaborated::ExpressionKind::Application(elab_fun, elab_arg);
+                (elab, return_type)
             }
             desugared::ExpressionKind::Match(scrutinee, arms) => {
                 let return_type = env.new_hole();
 
-                let ((), scrutinee_type) = scrutinee.infer(env.clone(), location);
+                let (elab_scrutinee, scrutinee_type) = scrutinee.infer(env.clone(), location);
+
+                let mut elab_arms = vec![];
 
                 for arm in arms {
                     let pattern_location = arm.pattern.location;
-                    let (bindings, pattern_type) = arm.pattern.infer(env.clone(), location);
+                    let ((elab_pattern, bindings), pattern_type) =
+                        arm.pattern.infer(env.clone(), location);
 
                     unification::unify(
                         pattern_type,
@@ -570,7 +634,8 @@ impl Infer for desugared::ExpressionKind {
                     }
 
                     let expression_location = arm.expression.location;
-                    let ((), expression_type) = arm.expression.infer(env.clone(), location);
+                    let (elab_expression, expression_type) =
+                        arm.expression.infer(env.clone(), location);
 
                     unification::unify(
                         expression_type,
@@ -578,45 +643,87 @@ impl Infer for desugared::ExpressionKind {
                         &env,
                         expression_location,
                     );
+
+                    elab_arms.push(elaborated::Arm {
+                        pattern: elab_pattern,
+                        expression: elab_expression,
+                    });
                 }
 
-                ((), return_type)
+                let elab = elaborated::ExpressionKind::Match(
+                    elab_scrutinee,
+                    elaborated::CaseTree::Failure,
+                    vec![],
+                );
+                (elab, return_type)
             }
             desugared::ExpressionKind::Block(statements) => {
                 let mut return_type = env.unit_type.clone();
 
+                let mut elab_statements = vec![];
                 let mut env = env;
                 for statement in statements {
-                    let (next_env, statement_type) = statement.infer(env, location);
+                    let ((elab_statement, next_env), statement_type) =
+                        statement.infer(env, location);
+                    elab_statements.push(elab_statement);
                     env = next_env;
                     return_type = statement_type;
                 }
 
-                ((), return_type)
+                (
+                    elaborated::ExpressionKind::Block(elab_statements),
+                    return_type,
+                )
             }
         }
     }
 }
 
 impl Infer for desugared::Pattern {
-    type Out = rpds::HashTrieMap<String, Type>;
+    type Out = (elaborated::Pattern, rpds::HashTrieMap<String, Type>);
 
     fn infer(self, env: TypeEnv, _location: crate::location::Location) -> (Self::Out, Type) {
-        self.kind.infer(env, self.location)
+        let location = self.location;
+        let ((pattern, binds), r#type) = self.kind.infer(env, location);
+
+        let elab = elaborated::Pattern {
+            location,
+            kind: Box::new(pattern),
+            r#type: r#type.clone(),
+        };
+        ((elab, binds), r#type)
     }
 }
 
+fn infer_pattern_error() -> (
+    (elaborated::PatternKind, rpds::HashTrieMap<String, Type>),
+    Type,
+) {
+    (
+        (elaborated::PatternKind::Error, rpds::ht_map![]),
+        Type::new(TypeKind::Error),
+    )
+}
+
 impl Infer for desugared::PatternKind {
-    type Out = rpds::HashTrieMap<String, Type>;
+    type Out = (elaborated::PatternKind, rpds::HashTrieMap<String, Type>);
 
     fn infer(self, env: TypeEnv, location: crate::location::Location) -> (Self::Out, Type) {
         match self {
             desugared::PatternKind::Ident(symbol) => {
                 let hole = env.new_hole();
-                (rpds::ht_map![symbol.name.clone() => hole.clone()], hole)
+                let binds = rpds::ht_map![symbol.name.clone() => hole.clone()];
+                let elab = elaborated::PatternKind::Ident(symbol);
+                ((elab, binds), hole)
             }
-            desugared::PatternKind::Number(_) => (rpds::ht_map![], env.number_type.clone()),
-            desugared::PatternKind::String(_) => (rpds::ht_map![], env.string_type.clone()),
+            desugared::PatternKind::Number(n) => (
+                (elaborated::PatternKind::Number(n), rpds::ht_map![]),
+                env.number_type.clone(),
+            ),
+            desugared::PatternKind::String(s) => (
+                (elaborated::PatternKind::String(s), rpds::ht_map![]),
+                env.string_type.clone(),
+            ),
             desugared::PatternKind::Constructor(symbol, _)
                 if !env.constructors.contains_key(symbol.as_str()) =>
             {
@@ -624,7 +731,7 @@ impl Infer for desugared::PatternKind {
                     name: symbol.name.clone(),
                     location,
                 });
-                (rpds::ht_map![], Type::new(TypeKind::Error))
+                infer_pattern_error()
             }
             desugared::PatternKind::Constructor(symbol, patterns) => {
                 let Some((s, arity)) = env.constructors.get(symbol.as_str()).cloned() else {
@@ -632,15 +739,18 @@ impl Infer for desugared::PatternKind {
                 };
                 if patterns.len() != arity {
                     env.reporter.report(errors::ArityError { arity, location });
-                    return (rpds::ht_map![], Type::new(TypeKind::Error));
+                    return infer_pattern_error();
                 }
 
                 let mut instantiated = env.instantiate(s);
+                let mut elab_patterns = vec![];
                 let mut m = rpds::ht_map![];
 
                 for pattern in patterns.into_iter() {
                     let pattern_location = pattern.location;
-                    let (binds, pattern_type) = pattern.infer(env.clone(), location);
+                    let ((elab_pattern, binds), pattern_type) =
+                        pattern.infer(env.clone(), location);
+                    elab_patterns.push(elab_pattern);
 
                     if let TypeKind::Arrow(a, b) = &*instantiated.clone() {
                         instantiated = b.clone();
@@ -663,36 +773,45 @@ impl Infer for desugared::PatternKind {
                     }
                 }
 
-                (m, instantiated)
+                let elab = elaborated::PatternKind::Constructor(symbol, elab_patterns);
+                ((elab, m), instantiated)
             }
 
             desugared::PatternKind::Annot(pattern, r#type) => {
-                let ((), inferred_type) = r#type.infer(env.clone(), location);
-                let (bindings, t) = pattern.check(inferred_type, &env, location);
+                let (_, inferred_type) = r#type.infer(env.clone(), location);
+                let ((elab_pattern, bindings), t) = pattern.check(inferred_type, &env, location);
 
-                (bindings, t)
+                ((*elab_pattern.kind, bindings), t)
             }
         }
     }
 }
 
 impl Infer for desugared::Statement {
-    type Out = TypeEnv;
+    type Out = (elaborated::Statement, TypeEnv);
 
     fn infer(self, env: TypeEnv, _location: crate::location::Location) -> (Self::Out, Type) {
-        self.kind.infer(env, self.location)
+        let location = self.location;
+        let ((elab, env), r#type) = self.kind.infer(env, location);
+
+        let elab = elaborated::Statement {
+            location,
+            kind: elab,
+            r#type: r#type.clone(),
+        };
+        ((elab, env), r#type)
     }
 }
 
 impl Infer for desugared::StatementKind {
-    type Out = TypeEnv;
+    type Out = (elaborated::StatementKind, TypeEnv);
 
     fn infer(self, env: TypeEnv, location: crate::location::Location) -> (Self::Out, Type) {
         match self {
             desugared::StatementKind::Let(symbol, expression) => {
                 let unit = env.unit_type.clone();
                 env.enter_level();
-                let ((), expression_type) = expression.infer(env.clone(), location);
+                let (elab_expression, expression_type) = expression.infer(env.clone(), location);
                 env.leave_level();
 
                 // let generalized =
@@ -700,11 +819,13 @@ impl Infer for desugared::StatementKind {
                 env.variables
                     .insert_mut(symbol.name.clone(), Scheme::new(vec![], expression_type));
 
-                (env, unit)
+                let elab = elaborated::StatementKind::Let(symbol, elab_expression);
+                ((elab, env), unit)
             }
             desugared::StatementKind::Expression(expression) => {
-                let ((), expression_type) = expression.infer(env.clone(), location);
-                (env, expression_type)
+                let (elab_expression, expression_type) = expression.infer(env.clone(), location);
+                let elab = elaborated::StatementKind::Expression(elab_expression);
+                ((elab, env), expression_type)
             }
         }
     }
@@ -734,9 +855,12 @@ impl Infer for desugared::TypeKind {
                 }
             },
             desugared::TypeKind::Generic(symbol, items) => {
-                match env.datatypes.get(symbol.as_str()).copied() {
-                    Some(arity) if arity != items.len() => {
-                        env.reporter.report(errors::ArityError { arity, location });
+                match env.datatypes.get(symbol.as_str()).cloned() {
+                    Some(data) if data.arity != items.len() => {
+                        env.reporter.report(errors::ArityError {
+                            arity: data.arity,
+                            location,
+                        });
                         ((), Type::new(TypeKind::Error))
                     }
                     Some(_) => {
@@ -773,11 +897,11 @@ pub trait Check {
 mod check_impl {
     use crate::{
         checker::{Check, Infer, Type, TypeEnv, TypeKind, errors, unification},
-        tree::desugared,
+        tree::{desugared, elaborated},
     };
 
     impl Check for desugared::Pattern {
-        type Out = rpds::HashTrieMap<String, Type>;
+        type Out = (elaborated::Pattern, rpds::HashTrieMap<String, Type>);
 
         fn check(
             self,
@@ -785,12 +909,20 @@ mod check_impl {
             env: &TypeEnv,
             _location: crate::location::Location,
         ) -> (Self::Out, Type) {
-            self.kind.check(r#type, env, self.location)
+            let location = self.location;
+            let ((elab_pattern, binds), r#type) = self.kind.check(r#type, env, location);
+
+            let elab = elaborated::Pattern {
+                location,
+                kind: Box::new(elab_pattern),
+                r#type: r#type.clone(),
+            };
+            ((elab, binds), r#type)
         }
     }
 
     impl Check for desugared::PatternKind {
-        type Out = rpds::HashTrieMap<String, Type>;
+        type Out = (elaborated::PatternKind, rpds::HashTrieMap<String, Type>);
 
         fn check(
             self,
@@ -799,26 +931,35 @@ mod check_impl {
             location: crate::location::Location,
         ) -> (Self::Out, Type) {
             match (&self, &*r#type) {
-                (desugared::PatternKind::Number(_), t) if t == &*env.number_type => {
-                    (rpds::ht_map![], env.number_type.clone())
-                }
-                (desugared::PatternKind::String(_), t) if t == &*env.string_type => {
-                    (rpds::ht_map![], env.string_type.clone())
-                }
+                (desugared::PatternKind::Number(n), t) if t == &*env.number_type => (
+                    (elaborated::PatternKind::Number(*n), rpds::ht_map![]),
+                    env.number_type.clone(),
+                ),
+                (desugared::PatternKind::String(s), t) if t == &*env.string_type => (
+                    (
+                        elaborated::PatternKind::String(s.to_owned()),
+                        rpds::ht_map![],
+                    ),
+                    env.string_type.clone(),
+                ),
                 (_, _) => {
-                    let (bindings, pattern_type) = self.infer(env.clone(), location);
+                    let ((elab_pattern, bindings), pattern_type) =
+                        self.infer(env.clone(), location);
 
                     unification::unify(pattern_type.clone(), r#type.clone(), env, location);
 
                     if pattern_type == r#type {
-                        (bindings, r#type)
+                        ((elab_pattern, bindings), r#type)
                     } else {
                         env.reporter.report(errors::TypeMismatch {
                             got: pattern_type,
                             expected: r#type,
                             location,
                         });
-                        (bindings, Type::new(TypeKind::Error))
+                        (
+                            (elaborated::PatternKind::Error, bindings),
+                            Type::new(TypeKind::Error),
+                        )
                     }
                 }
             }
@@ -838,7 +979,13 @@ impl Declare for desugared::Data {
     fn declare(&self, mut env: TypeEnv) -> TypeEnv {
         let name = self.name.name.clone();
         let arity = self.generics.len();
-        env.datatypes.insert_mut(name, arity);
+        env.datatypes.insert_mut(
+            name,
+            Data {
+                constructors: self.constructors.clone(),
+                arity,
+            },
+        );
         env
     }
 }
@@ -924,7 +1071,7 @@ impl Define for desugared::Def {
         let signature = signature.skolemize();
 
         let body_location = self.body.location;
-        let ((), body_type) = self.body.infer(env.clone(), name.location);
+        let (_elab_body, body_type) = self.body.infer(env.clone(), name.location);
 
         unification::unify(signature, body_type, &env, body_location);
 

@@ -236,7 +236,7 @@ pub mod desugared {
         pub constructors: Vec<Constructor>,
     }
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub struct Constructor {
         pub name: Symbol,
         pub types: Vec<Type>,
@@ -276,5 +276,81 @@ pub mod desugared {
                 TypeKind::Arrow(a, b) => [a, b].iter().flat_map(|i| i.free_variables()).collect(),
             }
         }
+    }
+}
+
+pub mod elaborated {
+    use crate::{checker, tree::Symbol};
+
+    #[derive(Debug)]
+    pub enum ExpressionKind {
+        Ident(Symbol),
+        Number(i32),
+        String(String),
+        Constructor(Symbol, Vec<Expression>),
+
+        Lambda(Symbol, Expression),
+        Application(Expression, Expression),
+        Match(Expression, CaseTree, Vec<Expression>),
+
+        Block(Vec<Statement>),
+
+        Error,
+    }
+
+    #[derive(Debug)]
+    pub enum CaseTree {
+        Failure,
+        Leaf(usize),
+        Switch(Vec<(Case, CaseTree)>, Box<CaseTree>),
+    }
+
+    #[derive(Debug)]
+    pub enum Case {
+        Number(i32),
+        String(String),
+        Constructor(String, usize),
+    }
+
+    #[derive(Debug)]
+    pub struct Expression {
+        pub location: crate::location::Location,
+        pub kind: Box<ExpressionKind>,
+        pub r#type: checker::Type,
+    }
+
+    #[derive(Debug)]
+    pub struct Arm {
+        pub pattern: Pattern,
+        pub expression: Expression,
+    }
+
+    #[derive(Clone, Debug)]
+    pub enum PatternKind {
+        Ident(Symbol),
+        Number(i32),
+        String(String),
+        Constructor(Symbol, Vec<Pattern>),
+        Error,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct Pattern {
+        pub location: crate::location::Location,
+        pub kind: Box<PatternKind>,
+        pub r#type: checker::Type,
+    }
+
+    #[derive(Debug)]
+    pub enum StatementKind {
+        Let(Symbol, Expression),
+        Expression(Expression),
+    }
+
+    #[derive(Debug)]
+    pub struct Statement {
+        pub location: crate::location::Location,
+        pub kind: StatementKind,
+        pub r#type: checker::Type,
     }
 }
