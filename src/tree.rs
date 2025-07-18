@@ -298,11 +298,11 @@ pub mod elaborated {
         Error,
     }
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub enum CaseTree {
         Failure,
-        Leaf(usize),
-        Switch(Vec<(Case, CaseTree)>, Box<CaseTree>),
+        Leaf(checker::exhaustive::Row<checker::exhaustive::Case>),
+        Switch(Vec<(String, CaseTree)>, Option<Box<CaseTree>>),
     }
 
     #[derive(Debug)]

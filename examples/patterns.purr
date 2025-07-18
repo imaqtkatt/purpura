@@ -1,0 +1,14 @@
+data Pair(a, b) {
+  Pair(a, b)
+}
+
+data Bool {
+  True(),
+  False(),
+}
+
+sig and : Pair(Bool, Bool) -> Bool
+def and pair = match pair case {
+  Pair(True(), True()) => True(),
+  Pair(x, y) => False(),
+}

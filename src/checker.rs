@@ -1,5 +1,7 @@
+pub mod exhaustive;
+
 use crate::{
-    report,
+    report::{self, generic_report},
     tree::{desugared, elaborated},
 };
 
@@ -14,6 +16,17 @@ pub enum TypeKind {
 }
 
 impl TypeKind {
+    /// Forces out the bound type of a hole.
+    pub fn force(self: Type) -> Type {
+        match &*self {
+            TypeKind::Hole(hole) => match hole.get() {
+                HoleInner::Bound(t) => t.force(),
+                HoleInner::Unbound(_, _) => self.clone(),
+            },
+            _ => self.clone(),
+        }
+    }
+
     pub fn unit() -> Type {
         Type::new(TypeKind::Generic("Unit".to_string(), vec![]))
     }
@@ -644,17 +657,33 @@ impl Infer for desugared::ExpressionKind {
                         expression_location,
                     );
 
-                    elab_arms.push(elaborated::Arm {
-                        pattern: elab_pattern,
-                        expression: elab_expression,
-                    });
+                    elab_arms.push((elab_pattern, elab_expression));
                 }
 
-                let elab = elaborated::ExpressionKind::Match(
-                    elab_scrutinee,
-                    elaborated::CaseTree::Failure,
-                    vec![],
-                );
+                let (elab_patterns, elab_branches) = elab_arms.into_iter().unzip();
+
+                let case_tree = match exhaustive::is_exhaustive(
+                    &env,
+                    elab_patterns,
+                    vec![scrutinee_type.clone()],
+                ) {
+                    exhaustive::Witness::Exhaustive(case_tree) => case_tree,
+                    exhaustive::Witness::NonExhaustive(row) => {
+                        env.reporter.report(generic_report(
+                            report::Severity::Error,
+                            format!(
+                                "non exhaustive pattern matching - consider adding {}",
+                                row.first()
+                            ),
+                            location,
+                        ));
+                        return infer_expr_error();
+                    }
+                };
+
+                println!("case_tree = {case_tree:#?}");
+                let elab =
+                    elaborated::ExpressionKind::Match(elab_scrutinee, case_tree, elab_branches);
                 (elab, return_type)
             }
             desugared::ExpressionKind::Block(statements) => {
