@@ -1,0 +1,6 @@
+sig fib : Number -> Number
+def fib n = match n case {
+  0 => 0,
+  1 => 1,
+  next => fib (next - 1) + fib (next - 2)
+}

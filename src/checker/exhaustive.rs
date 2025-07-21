@@ -49,7 +49,7 @@ fn from_pattern(value: elaborated::Pattern) -> Option<Case> {
 
 #[derive(Clone, Debug)]
 pub struct Row<T: Clone> {
-    index: usize,
+    pub index: usize,
     inner: VecDeque<T>,
 }
 
@@ -153,6 +153,22 @@ impl Row<Case> {
             None
         }
     }
+
+    fn number(&self) -> Option<i32> {
+        if let Case::Number(n) = self.first() {
+            Some(*n)
+        } else {
+            None
+        }
+    }
+
+    fn string(&self) -> Option<String> {
+        if let Case::String(s) = self.first() {
+            Some(s.clone())
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -180,6 +196,14 @@ impl Matrix<Case> {
 
     fn constructors(&self) -> indexmap::IndexSet<String> {
         self.rows.iter().flat_map(|row| row.constructor()).collect()
+    }
+
+    fn numbers(&self) -> indexmap::IndexSet<i32> {
+        self.rows.iter().flat_map(|row| row.number()).collect()
+    }
+
+    fn strings(&self) -> indexmap::IndexSet<String> {
+        self.rows.iter().flat_map(|row| row.string()).collect()
     }
 
     fn specialize(self, case: Case) -> Self {
@@ -244,6 +268,7 @@ struct Problem {
     types: Row<checker::Type>,
     case: Row<Case>,
     matrix: Matrix<Case>,
+    binders: Row<String>,
 }
 
 pub fn is_exhaustive(
@@ -273,8 +298,16 @@ pub fn is_exhaustive(
             inner: vec![Case::Wildcard].into(),
         },
         matrix: Matrix { rows: matrix },
+        binders: Row {
+            index: 0,
+            inner: generate_names("scrut", 1).into(),
+        },
     }
     .exhaustive(env)
+}
+
+fn generate_names(old: &str, arity: usize) -> Vec<String> {
+    (0..arity).map(|i| format!("{old}_{i}")).collect()
 }
 
 impl Problem {
@@ -284,11 +317,13 @@ impl Problem {
         types: Vec<checker::Type>,
         cases: Vec<Case>,
         case: Case,
+        binders: Vec<String>,
     ) -> Witness {
         Self {
             types: self.types.inline(types.into()),
             case: self.case.inline(cases.into()),
             matrix: self.matrix.specialize(case),
+            binders: self.binders.inline(binders.into()),
         }
         .exhaustive(env)
     }
@@ -298,6 +333,7 @@ impl Problem {
             types: self.types.pop_front(),
             case: self.case.pop_front(),
             matrix: self.matrix.default(),
+            binders: self.binders.pop_front(),
         }
     }
 
@@ -349,6 +385,12 @@ impl Problem {
         let current = self.types.first().clone().force();
 
         match (case, &*current) {
+            (Case::Wildcard, t) if t == &*env.number_type => {
+                self.split_numbers(env).prepend(Case::Wildcard)
+            }
+            (Case::String(_), t) if t == &*env.string_type => {
+                self.split_strings(env).prepend(Case::Wildcard)
+            }
             // TODO: make Number and String as internal types instead of generics?
             (Case::Wildcard, checker::TypeKind::Generic(name, types))
                 if env.datatypes.contains_key(name) =>
@@ -357,20 +399,11 @@ impl Problem {
             }
             (Case::Wildcard, _) => self.specialize_wildcard(env),
 
-            (Case::Number(n), t) if t == &*env.number_type => {
-                println!("here number");
-                let n = *n;
-                self.specialize(env, vec![], vec![], Case::Number(n))
-            }
-            (Case::String(s), t) if t == &*env.string_type => {
-                let s = s.clone();
-                self.specialize(env, vec![], vec![], Case::String(s))
-            }
-
             (Case::Constructor(a, b), checker::TypeKind::Generic(_, types)) => {
                 let a = a.clone();
                 let b = b.clone();
-                self.specialize_constructor(env, &a, b, types.clone())
+                let binders = generate_names(self.binders.first(), b.len());
+                self.specialize_constructor(env, &a, b, types.clone(), binders)
             }
 
             (a, b) => panic!("reached {a:?} : {b}"),
@@ -417,18 +450,27 @@ impl Problem {
         types: Vec<checker::Type>,
         is_complete: bool,
     ) -> Witness {
+        let scrutinee = self.binders.first().clone();
         let mut cases = vec![];
 
         for name in names.into_iter() {
             let (_, arity) = env.constructors.get(&name).unwrap();
             let wildcards = vec![Case::Wildcard; *arity];
+            let binders = generate_names(self.binders.first(), *arity);
 
-            let witness =
-                self.clone()
-                    .specialize_constructor(env, name.as_str(), wildcards, types.clone());
+            let witness = self.clone().specialize_constructor(
+                env,
+                name.as_str(),
+                wildcards,
+                types.clone(),
+                binders.clone(),
+            );
 
             match witness {
-                Witness::Exhaustive(case_tree) => cases.push((name, case_tree)),
+                Witness::Exhaustive(case_tree) => {
+                    let case = elaborated::Case::Constructor(name, *arity);
+                    cases.push((case, binders, case_tree))
+                }
                 Witness::NonExhaustive(_) => {
                     return witness.expand(name, *arity);
                 }
@@ -444,7 +486,7 @@ impl Problem {
             }
         };
 
-        Witness::Exhaustive(elaborated::CaseTree::Switch(cases, default))
+        Witness::Exhaustive(elaborated::CaseTree::Switch(scrutinee, cases, default))
     }
 
     fn specialize_constructor(
@@ -453,8 +495,68 @@ impl Problem {
         name: &str,
         cases: Vec<Case>,
         types: Vec<checker::Type>,
+        binders: Vec<String>,
     ) -> Witness {
         let case = Case::Constructor(name.to_string(), cases.clone());
-        self.specialize(env, types, cases, case)
+        self.specialize(env, types, cases, case, binders)
+    }
+
+    fn split_numbers(self, env: &checker::TypeEnv) -> Witness {
+        let scrutinee = self.binders.first().clone();
+        let numbers = self.matrix.numbers();
+
+        let mut cases = vec![];
+
+        for n in numbers.into_iter() {
+            let case = Case::Number(n);
+            let binders: Vec<String> = self.binders.inner.clone().into();
+            let witness = self
+                .clone()
+                .specialize(env, vec![], vec![], case, binders.clone());
+
+            match witness {
+                Witness::Exhaustive(case_tree) => {
+                    cases.push((elaborated::Case::Number(n), binders, case_tree));
+                }
+                Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
+            }
+        }
+
+        let default = match self.default().exhaustive(env) {
+            Witness::Exhaustive(case_tree) => Some(Box::new(case_tree)),
+            Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
+        };
+
+        Witness::Exhaustive(elaborated::CaseTree::Switch(scrutinee, cases, default))
+    }
+
+    fn split_strings(self, env: &checker::TypeEnv) -> Witness {
+        let scrutinee = self.binders.first().clone();
+        let strings = self.matrix.strings();
+
+        let mut cases = vec![];
+
+        for s in strings.into_iter() {
+            let case = Case::String(s.clone());
+            let binders: Vec<String> = self.binders.inner.clone().into();
+            let witness = self
+                .clone()
+                .specialize(env, vec![], vec![], case, binders.clone());
+
+            match witness {
+                Witness::Exhaustive(case_tree) => {
+                    let case = elaborated::Case::String(s);
+                    cases.push((case, binders, case_tree));
+                }
+                Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
+            }
+        }
+
+        let default = match self.default().exhaustive(env) {
+            Witness::Exhaustive(case_tree) => Some(Box::new(case_tree)),
+            Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
+        };
+
+        Witness::Exhaustive(elaborated::CaseTree::Switch(scrutinee, cases, default))
     }
 }

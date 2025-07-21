@@ -300,12 +300,15 @@ pub mod elaborated {
 
     #[derive(Clone, Debug)]
     pub enum CaseTree {
-        Failure,
         Leaf(checker::exhaustive::Row<checker::exhaustive::Case>),
-        Switch(Vec<(String, CaseTree)>, Option<Box<CaseTree>>),
+        Switch(
+            String,
+            Vec<(Case, Vec<String>, CaseTree)>,
+            Option<Box<CaseTree>>,
+        ),
     }
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub enum Case {
         Number(i32),
         String(String),
@@ -317,12 +320,6 @@ pub mod elaborated {
         pub location: crate::location::Location,
         pub kind: Box<ExpressionKind>,
         pub r#type: checker::Type,
-    }
-
-    #[derive(Debug)]
-    pub struct Arm {
-        pub pattern: Pattern,
-        pub expression: Expression,
     }
 
     #[derive(Clone, Debug)]

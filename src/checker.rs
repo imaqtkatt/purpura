@@ -492,6 +492,36 @@ mod errors {
             self.location
         }
     }
+
+    pub struct NonExhaustive {
+        next_case: crate::checker::exhaustive::Case,
+        location: crate::location::Location,
+    }
+
+    impl report::Diag for NonExhaustive {
+        fn severity(&self) -> report::Severity {
+            report::Severity::Error
+        }
+
+        fn message(&self) -> String {
+            "match error".to_string()
+        }
+
+        fn markers(&self) -> Vec<report::Marker> {
+            vec![report::Marker::new(
+                "non exhaustive pattern matching".to_string(),
+                self.location,
+            )]
+        }
+
+        fn hint(&self) -> Option<String> {
+            Some(format!("try adding {}", self.next_case))
+        }
+
+        fn location(&self) -> crate::location::Location {
+            self.location
+        }
+    }
 }
 
 impl Infer for desugared::Expression {
@@ -917,7 +947,7 @@ pub trait Check {
 
     fn check(
         self,
-        r#type: Type,
+        expected: Type,
         env: &TypeEnv,
         location: crate::location::Location,
     ) -> (Self::Out, Type);
@@ -925,7 +955,7 @@ pub trait Check {
 
 mod check_impl {
     use crate::{
-        checker::{Check, Infer, Type, TypeEnv, TypeKind, errors, unification},
+        checker::{Check, Infer, Type, TypeEnv, unification},
         tree::{desugared, elaborated},
     };
 
@@ -955,11 +985,11 @@ mod check_impl {
 
         fn check(
             self,
-            r#type: Type,
+            expected: Type,
             env: &TypeEnv,
             location: crate::location::Location,
         ) -> (Self::Out, Type) {
-            match (&self, &*r#type) {
+            match (&self, &*expected) {
                 (desugared::PatternKind::Number(n), t) if t == &*env.number_type => (
                     (elaborated::PatternKind::Number(*n), rpds::ht_map![]),
                     env.number_type.clone(),
@@ -974,22 +1004,8 @@ mod check_impl {
                 (_, _) => {
                     let ((elab_pattern, bindings), pattern_type) =
                         self.infer(env.clone(), location);
-
-                    unification::unify(pattern_type.clone(), r#type.clone(), env, location);
-
-                    if pattern_type == r#type {
-                        ((elab_pattern, bindings), r#type)
-                    } else {
-                        env.reporter.report(errors::TypeMismatch {
-                            got: pattern_type,
-                            expected: r#type,
-                            location,
-                        });
-                        (
-                            (elaborated::PatternKind::Error, bindings),
-                            Type::new(TypeKind::Error),
-                        )
-                    }
+                    unification::unify(pattern_type.clone(), expected.clone(), env, location);
+                    ((elab_pattern, bindings), expected)
                 }
             }
         }
