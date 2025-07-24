@@ -13,6 +13,7 @@ mod lexer;
 mod location;
 mod parser;
 mod report;
+mod symbol;
 mod tree;
 
 #[derive(clap::Parser)]

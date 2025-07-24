@@ -7,7 +7,7 @@ pub enum Case {
     Wildcard,
     Number(i32),
     String(String),
-    Constructor(String, Vec<Case>),
+    Constructor(crate::symbol::Sym, Vec<Case>),
 }
 
 impl std::fmt::Display for Case {
@@ -17,7 +17,7 @@ impl std::fmt::Display for Case {
             Case::Number(n) => write!(f, "{n}"),
             Case::String(s) => write!(f, "{s:?}"),
             Case::Constructor(name, cases) => {
-                write!(f, "{name}")?;
+                write!(f, "{}", name.get())?;
                 write!(f, "(")?;
                 let cases = cases
                     .iter()
@@ -37,7 +37,7 @@ fn from_pattern(value: elaborated::Pattern) -> Option<Case> {
         elaborated::PatternKind::Number(n) => Some(Case::Number(n)),
         elaborated::PatternKind::String(s) => Some(Case::String(s)),
         elaborated::PatternKind::Constructor(symbol, patterns) => Some(Case::Constructor(
-            symbol.name,
+            symbol.inner,
             patterns
                 .into_iter()
                 .map(from_pattern)
@@ -117,7 +117,7 @@ impl Row<Case> {
             (Case::Wildcard, Case::Constructor(_, args)) => {
                 vec![self.inline(vec![Case::Wildcard; args.len()].into())]
             }
-            (Case::Constructor(a, b), Case::Constructor(c, _)) if a == c.as_str() => {
+            (Case::Constructor(a, b), Case::Constructor(c, _)) if *a == c => {
                 vec![self.inline(b.clone().into())]
             }
 
@@ -146,9 +146,9 @@ impl Row<Case> {
         matches!(self.first(), Case::Wildcard)
     }
 
-    fn constructor(&self) -> Option<String> {
+    fn constructor(&self) -> Option<crate::symbol::Sym> {
         if let Case::Constructor(name, _) = self.first() {
-            Some(name.clone())
+            Some(*name)
         } else {
             None
         }
@@ -194,7 +194,7 @@ impl Matrix<Case> {
         None
     }
 
-    fn constructors(&self) -> indexmap::IndexSet<String> {
+    fn constructors(&self) -> indexmap::IndexSet<crate::symbol::Sym> {
         self.rows.iter().flat_map(|row| row.constructor()).collect()
     }
 
@@ -236,7 +236,7 @@ impl Witness {
         Witness::NonExhaustive(row.preppend(case))
     }
 
-    fn expand(self, name: String, size: usize) -> Self {
+    fn expand(self, name: crate::symbol::Sym, size: usize) -> Self {
         let Witness::NonExhaustive(row) = self else {
             return self;
         };
@@ -256,10 +256,10 @@ pub enum Finitude<T> {
 
 #[derive(Debug)]
 pub enum Completeness {
-    Complete(Finitude<indexmap::IndexSet<String>>),
+    Complete(Finitude<indexmap::IndexSet<crate::symbol::Sym>>),
     Incomplete(
-        Finitude<indexmap::IndexSet<String>>,
-        indexmap::IndexSet<String>,
+        Finitude<indexmap::IndexSet<crate::symbol::Sym>>,
+        indexmap::IndexSet<crate::symbol::Sym>,
     ),
 }
 
@@ -268,7 +268,18 @@ struct Problem {
     types: Row<checker::Type>,
     case: Row<Case>,
     matrix: Matrix<Case>,
-    binders: Row<String>,
+    occurrences: Row<Occurrence>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Occurrence(String, Vec<usize>);
+
+impl Occurrence {
+    pub fn with(self, next: usize) -> Self {
+        let mut indexes = self.1;
+        indexes.push(next);
+        Self(self.0, indexes)
+    }
 }
 
 pub fn is_exhaustive(
@@ -298,16 +309,12 @@ pub fn is_exhaustive(
             inner: vec![Case::Wildcard].into(),
         },
         matrix: Matrix { rows: matrix },
-        binders: Row {
+        occurrences: Row {
             index: 0,
-            inner: generate_names("scrut", 1).into(),
+            inner: VecDeque::from([Occurrence("scrut".to_string(), vec![])]),
         },
     }
     .exhaustive(env)
-}
-
-fn generate_names(old: &str, arity: usize) -> Vec<String> {
-    (0..arity).map(|i| format!("{old}_{i}")).collect()
 }
 
 impl Problem {
@@ -317,13 +324,13 @@ impl Problem {
         types: Vec<checker::Type>,
         cases: Vec<Case>,
         case: Case,
-        binders: Vec<String>,
+        occurrences: Vec<Occurrence>,
     ) -> Witness {
         Self {
             types: self.types.inline(types.into()),
             case: self.case.inline(cases.into()),
             matrix: self.matrix.specialize(case),
-            binders: self.binders.inline(binders.into()),
+            occurrences: self.occurrences.inline(occurrences.into()),
         }
         .exhaustive(env)
     }
@@ -333,7 +340,7 @@ impl Problem {
             types: self.types.pop_front(),
             case: self.case.pop_front(),
             matrix: self.matrix.default(),
-            binders: self.binders.pop_front(),
+            occurrences: self.occurrences.pop_front(),
         }
     }
 
@@ -341,26 +348,16 @@ impl Problem {
         if self.matrix.is_empty() {
             Witness::NonExhaustive(self.case)
         } else if let Some(row) = self.matrix.is_irrefutable() {
-            Witness::Exhaustive(elaborated::CaseTree::Leaf(row.clone()))
+            Witness::Exhaustive(elaborated::CaseTree::Leaf(row.index))
         } else {
             self.match_exhaustiveness(env)
         }
     }
 
-    fn completeness(&self, env: &checker::TypeEnv, name: &str) -> Completeness {
-        match name {
-            "Number" | "String" => {
-                return Completeness::Incomplete(Finitude::Infinite, indexmap::indexset! {});
-            }
-            _ => {}
-        }
-
-        if let Some(data) = env.datatypes.get(name) {
-            let constructors: indexmap::IndexSet<String> = data
-                .constructors
-                .iter()
-                .map(|c| c.name.name.clone())
-                .collect();
+    fn completeness(&self, env: &checker::TypeEnv, name: crate::symbol::Sym) -> Completeness {
+        if let Some(data) = env.datatypes.get(&name) {
+            let constructors: indexmap::IndexSet<crate::symbol::Sym> =
+                data.constructors.iter().map(|c| c.name.inner).collect();
             let used = self.matrix.constructors();
             let difference = constructors
                 .difference(&used)
@@ -388,29 +385,32 @@ impl Problem {
             (Case::Wildcard, t) if t == &*env.number_type => {
                 self.split_numbers(env).prepend(Case::Wildcard)
             }
-            (Case::String(_), t) if t == &*env.string_type => {
+            (Case::Wildcard, t) if t == &*env.string_type => {
                 self.split_strings(env).prepend(Case::Wildcard)
             }
             // TODO: make Number and String as internal types instead of generics?
             (Case::Wildcard, checker::TypeKind::Generic(name, types))
                 if env.datatypes.contains_key(name) =>
             {
-                self.ehxaustiveness_wildcard(env, name.clone(), types.clone())
+                self.ehxaustiveness_wildcard(env, *name, types.clone())
             }
             (Case::Wildcard, _) => self.specialize_wildcard(env),
 
             (Case::Constructor(a, b), checker::TypeKind::Generic(_, types)) => {
-                let a = a.clone();
+                let a = *a;
                 let b = b.clone();
-                let binders = generate_names(self.binders.first(), b.len());
-                self.specialize_constructor(env, &a, b, types.clone(), binders)
+                let last_occurrence = self.occurrences.first();
+                let occurrences = (0..b.len())
+                    .map(|i| last_occurrence.clone().with(i))
+                    .collect();
+                self.specialize_constructor(env, a, b, types.clone(), occurrences)
             }
 
             (a, b) => panic!("reached {a:?} : {b}"),
         }
     }
 
-    fn synthetize(&self, env: &checker::TypeEnv, name: String) -> Case {
+    fn synthetize(&self, env: &checker::TypeEnv, name: crate::symbol::Sym) -> Case {
         let (_, arity) = env.constructors.get(&name).unwrap();
         Case::Constructor(name, vec![Case::Wildcard; *arity])
     }
@@ -418,19 +418,19 @@ impl Problem {
     fn ehxaustiveness_wildcard(
         self,
         env: &checker::TypeEnv,
-        name: String,
+        name: crate::symbol::Sym,
         types: Vec<checker::Type>,
     ) -> Witness {
         if self.matrix.is_wildcard() {
             self.specialize_wildcard(env)
         } else {
-            match self.completeness(env, &name) {
+            match self.completeness(env, name) {
                 Completeness::Complete(Finitude::Finite(names)) => {
                     self.split(env, names, types, true)
                 }
                 Completeness::Complete(Finitude::Infinite) => unreachable!(),
                 Completeness::Incomplete(Finitude::Finite(names), missing) => {
-                    let first = std::mem::take(&mut missing.into_iter().collect::<Vec<_>>()[0]);
+                    let first = missing.into_iter().collect::<Vec<_>>()[0];
                     let case = self.synthetize(env, first);
                     self.clone().split(env, names, types, false).prepend(case)
                 }
@@ -446,34 +446,34 @@ impl Problem {
     fn split(
         self,
         env: &checker::TypeEnv,
-        names: indexmap::IndexSet<String>,
+        names: indexmap::IndexSet<crate::symbol::Sym>,
         types: Vec<checker::Type>,
         is_complete: bool,
     ) -> Witness {
-        let scrutinee = self.binders.first().clone();
+        let scrutinee = self.occurrences.first().clone();
         let mut cases = vec![];
 
         for name in names.into_iter() {
             let (_, arity) = env.constructors.get(&name).unwrap();
             let wildcards = vec![Case::Wildcard; *arity];
-            let binders = generate_names(self.binders.first(), *arity);
+            let occurrences = (0..*arity)
+                .map(|i| scrutinee.clone().with(i))
+                .collect::<Vec<_>>();
 
             let witness = self.clone().specialize_constructor(
                 env,
-                name.as_str(),
+                name,
                 wildcards,
                 types.clone(),
-                binders.clone(),
+                occurrences,
             );
 
             match witness {
                 Witness::Exhaustive(case_tree) => {
                     let case = elaborated::Case::Constructor(name, *arity);
-                    cases.push((case, binders, case_tree))
+                    cases.push((case, case_tree))
                 }
-                Witness::NonExhaustive(_) => {
-                    return witness.expand(name, *arity);
-                }
+                Witness::NonExhaustive(_) => return witness.expand(name, *arity),
             }
         }
 
@@ -492,31 +492,31 @@ impl Problem {
     fn specialize_constructor(
         self,
         env: &checker::TypeEnv,
-        name: &str,
+        name: crate::symbol::Sym,
         cases: Vec<Case>,
         types: Vec<checker::Type>,
-        binders: Vec<String>,
+        occurrences: Vec<Occurrence>,
     ) -> Witness {
-        let case = Case::Constructor(name.to_string(), cases.clone());
-        self.specialize(env, types, cases, case, binders)
+        let case = Case::Constructor(name, cases.clone());
+        self.specialize(env, types, cases, case, occurrences)
     }
 
     fn split_numbers(self, env: &checker::TypeEnv) -> Witness {
-        let scrutinee = self.binders.first().clone();
+        let scrutinee = self.occurrences.first().clone();
         let numbers = self.matrix.numbers();
 
         let mut cases = vec![];
 
         for n in numbers.into_iter() {
             let case = Case::Number(n);
-            let binders: Vec<String> = self.binders.inner.clone().into();
+            let occurrences: Vec<Occurrence> = self.occurrences.inner.clone().into();
             let witness = self
                 .clone()
-                .specialize(env, vec![], vec![], case, binders.clone());
+                .specialize(env, vec![], vec![], case, occurrences);
 
             match witness {
                 Witness::Exhaustive(case_tree) => {
-                    cases.push((elaborated::Case::Number(n), binders, case_tree));
+                    cases.push((elaborated::Case::Number(n), case_tree));
                 }
                 Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
             }
@@ -531,22 +531,22 @@ impl Problem {
     }
 
     fn split_strings(self, env: &checker::TypeEnv) -> Witness {
-        let scrutinee = self.binders.first().clone();
+        let scrutinee = self.occurrences.first().clone();
         let strings = self.matrix.strings();
 
         let mut cases = vec![];
 
         for s in strings.into_iter() {
             let case = Case::String(s.clone());
-            let binders: Vec<String> = self.binders.inner.clone().into();
+            let occurrences: Vec<Occurrence> = self.occurrences.inner.clone().into();
             let witness = self
                 .clone()
-                .specialize(env, vec![], vec![], case, binders.clone());
+                .specialize(env, vec![], vec![], case, occurrences);
 
             match witness {
                 Witness::Exhaustive(case_tree) => {
                     let case = elaborated::Case::String(s);
-                    cases.push((case, binders, case_tree));
+                    cases.push((case, case_tree));
                 }
                 Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
             }

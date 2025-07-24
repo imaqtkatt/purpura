@@ -5,11 +5,13 @@ use crate::{
     tree::{self, desugared, parse},
 };
 
+type Sym = crate::symbol::Sym;
+
 #[derive(Debug)]
 pub struct Context {
-    datatypes: indexmap::IndexMap<String, desugared::Data>,
-    definitions: indexmap::IndexMap<String, parse::Def>,
-    signatures: indexmap::IndexMap<String, desugared::Signature>,
+    datatypes: indexmap::IndexMap<Sym, desugared::Data>,
+    definitions: indexmap::IndexMap<Sym, parse::Def>,
+    signatures: indexmap::IndexMap<Sym, desugared::Signature>,
 
     reporter: report::Reporter,
 }
@@ -68,11 +70,11 @@ impl report::Diag for DesugarError {
                 )]
             }
             DesugarError::MissingDef(symbol, location) => vec![report::Marker::new(
-                format!("missing definition for signature '{}'", symbol.as_str()),
+                format!("missing definition for signature '{}'", symbol.inner.get()),
                 *location,
             )],
             DesugarError::MissingSig(symbol, location) => vec![report::Marker::new(
-                format!("missing signature for definition '{}'", symbol.as_str()),
+                format!("missing signature for definition '{}'", symbol.inner.get()),
                 *location,
             )],
         }
@@ -103,30 +105,29 @@ impl Context {
     pub fn desugar_program(mut self, program: parse::Program) -> desugared::Program {
         for top_level in program.definitions.into_iter() {
             match top_level {
-                parse::TopLevel::Data(data) if self.datatypes.contains_key(data.name.as_str()) => {
+                parse::TopLevel::Data(data) if self.datatypes.contains_key(&data.name.inner) => {
                     self.reporter
                         .report(DesugarError::RepeatedDatatype(data.name.location))
                 }
                 parse::TopLevel::Data(data) => {
-                    self.datatypes
-                        .insert(data.name.name.clone(), desugar_data(data));
+                    self.datatypes.insert(data.name.inner, desugar_data(data));
                 }
 
-                parse::TopLevel::Sig(sig) if self.datatypes.contains_key(sig.name.as_str()) => {
+                parse::TopLevel::Sig(sig) if self.datatypes.contains_key(&sig.name.inner) => {
                     self.reporter
                         .report(DesugarError::RepeatedSignature(sig.name.location));
                 }
                 parse::TopLevel::Sig(sig) => {
                     self.signatures
-                        .insert(sig.name.name.clone(), desugar_signature(sig));
+                        .insert(sig.name.inner, desugar_signature(sig));
                 }
 
-                parse::TopLevel::Def(def) if self.definitions.contains_key(def.name.as_str()) => {
+                parse::TopLevel::Def(def) if self.definitions.contains_key(&def.name.inner) => {
                     self.reporter
                         .report(DesugarError::RepeatedDefinition(def.name.location));
                 }
                 parse::TopLevel::Def(def) => {
-                    self.definitions.insert(def.name.name.clone(), def);
+                    self.definitions.insert(def.name.inner, def);
                 }
             }
         }
@@ -217,7 +218,7 @@ pub fn desugar_expression(e: parse::Expression) -> desugared::Expression {
             let internal_name = op.inner.internal_name();
             let symbol = tree::Symbol {
                 location: op.location,
-                name: internal_name.to_string(),
+                inner: Sym::new(internal_name),
             };
             let expr_symbol = desugared::Expression {
                 location,

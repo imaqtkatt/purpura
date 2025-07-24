@@ -1,17 +1,17 @@
 pub mod exhaustive;
 
 use crate::{
-    report::{self, generic_report},
+    report::{self},
     tree::{desugared, elaborated},
 };
 
 #[derive(Debug)]
 pub enum TypeKind {
-    Var(String),
+    Var(Sym),
     Generalized(usize),
     Hole(Hole),
     Arrow(Type, Type),
-    Generic(String, Vec<Type>),
+    Generic(crate::symbol::Sym, Vec<Type>),
     Error,
 }
 
@@ -28,15 +28,15 @@ impl TypeKind {
     }
 
     pub fn unit() -> Type {
-        Type::new(TypeKind::Generic("Unit".to_string(), vec![]))
+        Type::new(TypeKind::Generic(crate::symbol::Sym::new("Unit"), vec![]))
     }
 
     pub fn number() -> Type {
-        Type::new(TypeKind::Generic("Number".to_string(), vec![]))
+        Type::new(TypeKind::Generic(crate::symbol::Sym::new("Number"), vec![]))
     }
 
     pub fn string() -> Type {
-        Type::new(TypeKind::Generic("String".to_string(), vec![]))
+        Type::new(TypeKind::Generic(crate::symbol::Sym::new("String"), vec![]))
     }
 
     pub fn arith() -> Type {
@@ -63,7 +63,7 @@ impl std::fmt::Display for TypeKind {
             }
         }
         match self {
-            TypeKind::Var(name) => write!(f, "{name}"),
+            TypeKind::Var(name) => write!(f, "{}", name.get()),
             TypeKind::Generalized(id) => write!(f, "#{id}"),
             TypeKind::Hole(hole) => match hole.get() {
                 HoleInner::Bound(inner) => write!(f, "{inner}"),
@@ -71,11 +71,12 @@ impl std::fmt::Display for TypeKind {
             },
             TypeKind::Arrow(a, b) if need_parens(a) => write!(f, "({a}) -> {b}"),
             TypeKind::Arrow(a, b) => write!(f, "{a} -> {b}"),
-            TypeKind::Generic(name, types) if types.is_empty() => write!(f, "{name}"),
+            TypeKind::Generic(name, types) if types.is_empty() => write!(f, "{}", name.get()),
             TypeKind::Generic(name, types) => {
                 write!(
                     f,
-                    "{name}({})",
+                    "{}({})",
+                    name.get(),
                     types
                         .iter()
                         .map(|t| t.to_string())
@@ -158,7 +159,7 @@ impl TypeKind {
             }
             TypeKind::Generic(name, types) => {
                 let types = types.iter().cloned().map(|t| t.instantiate(subs)).collect();
-                Type::new(TypeKind::Generic(name.clone(), types))
+                Type::new(TypeKind::Generic(*name, types))
             }
             TypeKind::Error => self.clone(),
         }
@@ -167,12 +168,12 @@ impl TypeKind {
 
 #[derive(Clone, Debug)]
 pub struct Scheme {
-    pub binds: Vec<String>,
+    pub binds: Vec<Sym>,
     pub r#type: Type,
 }
 
 impl Scheme {
-    pub fn new(binds: Vec<String>, r#type: Type) -> Self {
+    pub fn new(binds: Vec<Sym>, r#type: Type) -> Self {
         Self { binds, r#type }
     }
 
@@ -180,20 +181,22 @@ impl Scheme {
         let mut subs = vec![];
 
         for bind in self.binds.iter() {
-            subs.push(Type::new(TypeKind::Var(bind.clone())));
+            subs.push(Type::new(TypeKind::Var(*bind)));
         }
 
         self.r#type.clone().instantiate(&subs)
     }
 }
 
+type Sym = crate::symbol::Sym;
+
 #[derive(Clone, Debug)]
 pub struct TypeEnv {
-    pub(crate) variables: rpds::HashTrieMap<String, Scheme>,
-    pub(crate) constructors: rpds::HashTrieMap<String, (Scheme, usize)>,
-    pub(crate) definitions: rpds::HashTrieMap<String, Scheme>,
-    pub(crate) datatypes: rpds::HashTrieMap<String, Data>,
-    pub(crate) type_vars: rpds::HashTrieMap<String, Type>,
+    pub(crate) variables: rpds::HashTrieMap<Sym, Scheme>,
+    pub(crate) constructors: rpds::HashTrieMap<Sym, (Scheme, usize)>,
+    pub(crate) definitions: rpds::HashTrieMap<Sym, Scheme>,
+    pub(crate) datatypes: rpds::HashTrieMap<Sym, Data>,
+    pub(crate) type_vars: rpds::HashTrieMap<Sym, Type>,
 
     name: std::rc::Rc<std::cell::RefCell<usize>>,
     level: std::cell::RefCell<usize>,
@@ -211,12 +214,12 @@ pub struct Data {
     pub arity: usize,
 }
 
-pub(crate) fn builtin_definitions() -> rpds::HashTrieMap<String, Scheme> {
+pub(crate) fn builtin_definitions() -> rpds::HashTrieMap<Sym, Scheme> {
     rpds::ht_map![
-        "%add".to_string() => Scheme::new(vec![], TypeKind::arith()),
-        "%sub".to_string() => Scheme::new(vec![], TypeKind::arith()),
-        "%mul".to_string() => Scheme::new(vec![], TypeKind::arith()),
-        "%div".to_string() => Scheme::new(vec![], TypeKind::arith())
+        Sym::new("%add") => Scheme::new(vec![], TypeKind::arith()),
+        Sym::new("%sub") => Scheme::new(vec![], TypeKind::arith()),
+        Sym::new("%mul") => Scheme::new(vec![], TypeKind::arith()),
+        Sym::new("%div") => Scheme::new(vec![], TypeKind::arith())
     ]
 }
 
@@ -225,13 +228,13 @@ impl TypeEnv {
         unit_type: Type,
         number_type: Type,
         string_type: Type,
-        builtins: rpds::HashTrieMap<String, Scheme>,
+        builtins: rpds::HashTrieMap<Sym, Scheme>,
         reporter: report::Reporter,
     ) -> Self {
         let datatypes = rpds::ht_map![
-            "Unit".to_string() => Data { constructors: vec![], arity: 0 },
-            "Number".to_string() => Data { constructors: vec![], arity: 0 },
-            "String".to_string() => Data { constructors: vec![], arity: 0 }
+            Sym::new("Unit") => Data { constructors: vec![], arity: 0 },
+            Sym::new("Number") => Data { constructors: vec![], arity: 0 },
+            Sym::new("String") => Data { constructors: vec![], arity: 0 }
         ];
         Self {
             variables: Default::default(),
@@ -433,7 +436,7 @@ mod errors {
     }
 
     pub struct UnboundName {
-        pub name: String,
+        pub name: crate::symbol::Sym,
         pub location: crate::location::Location,
     }
 
@@ -448,7 +451,7 @@ mod errors {
 
         fn markers(&self) -> Vec<report::Marker> {
             vec![report::Marker::new(
-                format!("unbound name '{}'", self.name),
+                format!("unbound name '{}'", self.name.get()),
                 self.location,
             )]
         }
@@ -494,8 +497,8 @@ mod errors {
     }
 
     pub struct NonExhaustive {
-        next_case: crate::checker::exhaustive::Case,
-        location: crate::location::Location,
+        pub next_case: crate::checker::exhaustive::Case,
+        pub location: crate::location::Location,
     }
 
     impl report::Diag for NonExhaustive {
@@ -560,7 +563,7 @@ impl Infer for desugared::ExpressionKind {
                 while let Some(scope) = scope.pop()
                     && scheme.is_none()
                 {
-                    scheme = scope.get(symbol.as_str());
+                    scheme = scope.get(&symbol.inner);
                 }
 
                 match scheme.cloned() {
@@ -570,7 +573,7 @@ impl Infer for desugared::ExpressionKind {
                     }
                     None => {
                         env.reporter.report(errors::UnboundName {
-                            name: symbol.name.clone(),
+                            name: symbol.inner,
                             location,
                         });
                         infer_expr_error()
@@ -586,7 +589,7 @@ impl Infer for desugared::ExpressionKind {
                 env.string_type.clone(),
             ),
             desugared::ExpressionKind::Constructor(symbol, expressions) => {
-                match env.constructors.get(symbol.as_str()).cloned() {
+                match env.constructors.get(&symbol.inner).cloned() {
                     Some((_, arity)) if expressions.len() != arity => {
                         env.reporter.report(errors::ArityError { arity, location });
                         infer_expr_error()
@@ -618,7 +621,7 @@ impl Infer for desugared::ExpressionKind {
                     }
                     None => {
                         env.reporter.report(errors::UnboundName {
-                            name: symbol.name.clone(),
+                            name: symbol.inner,
                             location: symbol.location,
                         });
                         infer_expr_error()
@@ -630,7 +633,7 @@ impl Infer for desugared::ExpressionKind {
                 let s = Scheme::new(vec![], hole.clone());
 
                 let mut new_env = env.clone();
-                new_env.variables.insert_mut(symbol.name.clone(), s);
+                new_env.variables.insert_mut(symbol.inner, s);
 
                 let (elab_body, body_type) = body.infer(new_env, location);
                 let arrow_type = Type::new(TypeKind::Arrow(hole, body_type));
@@ -673,7 +676,7 @@ impl Infer for desugared::ExpressionKind {
                     let mut env = env.clone();
                     for (bind, t) in bindings.iter() {
                         env.variables
-                            .insert_mut(bind.clone(), Scheme::new(vec![], t.clone()));
+                            .insert_mut(Sym::new(bind), Scheme::new(vec![], t.clone()));
                     }
 
                     let expression_location = arm.expression.location;
@@ -692,29 +695,24 @@ impl Infer for desugared::ExpressionKind {
 
                 let (elab_patterns, elab_branches) = elab_arms.into_iter().unzip();
 
-                let case_tree = match exhaustive::is_exhaustive(
-                    &env,
-                    elab_patterns,
-                    vec![scrutinee_type.clone()],
-                ) {
-                    exhaustive::Witness::Exhaustive(case_tree) => case_tree,
-                    exhaustive::Witness::NonExhaustive(row) => {
-                        env.reporter.report(generic_report(
-                            report::Severity::Error,
-                            format!(
-                                "non exhaustive pattern matching - consider adding {}",
-                                row.first()
-                            ),
-                            location,
-                        ));
-                        return infer_expr_error();
+                match exhaustive::is_exhaustive(&env, elab_patterns, vec![scrutinee_type.clone()]) {
+                    exhaustive::Witness::Exhaustive(case_tree) => {
+                        println!("case_tree = {case_tree:#?}");
+                        let elab = elaborated::ExpressionKind::Match(
+                            elab_scrutinee,
+                            case_tree,
+                            elab_branches,
+                        );
+                        (elab, return_type)
                     }
-                };
-
-                println!("case_tree = {case_tree:#?}");
-                let elab =
-                    elaborated::ExpressionKind::Match(elab_scrutinee, case_tree, elab_branches);
-                (elab, return_type)
+                    exhaustive::Witness::NonExhaustive(row) => {
+                        env.reporter.report(errors::NonExhaustive {
+                            next_case: row.first().clone(),
+                            location,
+                        });
+                        infer_expr_error()
+                    }
+                }
             }
             desugared::ExpressionKind::Block(statements) => {
                 let mut return_type = env.unit_type.clone();
@@ -771,7 +769,7 @@ impl Infer for desugared::PatternKind {
         match self {
             desugared::PatternKind::Ident(symbol) => {
                 let hole = env.new_hole();
-                let binds = rpds::ht_map![symbol.name.clone() => hole.clone()];
+                let binds = rpds::ht_map![symbol.inner.get().to_owned() => hole.clone()];
                 let elab = elaborated::PatternKind::Ident(symbol);
                 ((elab, binds), hole)
             }
@@ -784,16 +782,16 @@ impl Infer for desugared::PatternKind {
                 env.string_type.clone(),
             ),
             desugared::PatternKind::Constructor(symbol, _)
-                if !env.constructors.contains_key(symbol.as_str()) =>
+                if !env.constructors.contains_key(&symbol.inner) =>
             {
                 env.reporter.report(errors::UnboundName {
-                    name: symbol.name.clone(),
+                    name: symbol.inner,
                     location,
                 });
                 infer_pattern_error()
             }
             desugared::PatternKind::Constructor(symbol, patterns) => {
-                let Some((s, arity)) = env.constructors.get(symbol.as_str()).cloned() else {
+                let Some((s, arity)) = env.constructors.get(&symbol.inner).cloned() else {
                     unreachable!()
                 };
                 if patterns.len() != arity {
@@ -876,7 +874,7 @@ impl Infer for desugared::StatementKind {
                 // let generalized =
                 let mut env = env.clone();
                 env.variables
-                    .insert_mut(symbol.name.clone(), Scheme::new(vec![], expression_type));
+                    .insert_mut(symbol.inner, Scheme::new(vec![], expression_type));
 
                 let elab = elaborated::StatementKind::Let(symbol, elab_expression);
                 ((elab, env), unit)
@@ -903,18 +901,18 @@ impl Infer for desugared::TypeKind {
 
     fn infer(self, env: TypeEnv, location: crate::location::Location) -> (Self::Out, Type) {
         match self {
-            desugared::TypeKind::Var(symbol) => match env.type_vars.get(symbol.as_str()).cloned() {
+            desugared::TypeKind::Var(symbol) => match env.type_vars.get(&symbol.inner).cloned() {
                 Some(t) => ((), t),
                 None => {
                     env.reporter.report(errors::UnboundName {
-                        name: symbol.name.clone(),
+                        name: symbol.inner,
                         location,
                     });
                     ((), Type::new(TypeKind::Error))
                 }
             },
             desugared::TypeKind::Generic(symbol, items) => {
-                match env.datatypes.get(symbol.as_str()).cloned() {
+                match env.datatypes.get(&symbol.inner).cloned() {
                     Some(data) if data.arity != items.len() => {
                         env.reporter.report(errors::ArityError {
                             arity: data.arity,
@@ -928,9 +926,9 @@ impl Infer for desugared::TypeKind {
                             .map(|i| i.infer(env.clone(), location))
                             .unzip();
 
-                        ((), Type::new(TypeKind::Generic(symbol.name.clone(), items)))
+                        ((), Type::new(TypeKind::Generic(symbol.inner, items)))
                     }
-                    None => todo!("{}", symbol.as_str()),
+                    None => todo!("{}", symbol.inner.get()),
                 }
             }
             desugared::TypeKind::Arrow(a, b) => {
@@ -1010,6 +1008,44 @@ mod check_impl {
             }
         }
     }
+
+    impl Check for desugared::Expression {
+        type Out = elaborated::Expression;
+
+        fn check(
+            self,
+            expected: Type,
+            env: &TypeEnv,
+            location: crate::location::Location,
+        ) -> (Self::Out, Type) {
+            let (elab_expression, r#type) = self.kind.check(expected, env, location);
+            let elab = elaborated::Expression {
+                location,
+                kind: Box::new(elab_expression),
+                r#type: r#type.clone(),
+            };
+            (elab, r#type)
+        }
+    }
+
+    impl Check for desugared::ExpressionKind {
+        type Out = elaborated::ExpressionKind;
+
+        fn check(
+            self,
+            expected: Type,
+            env: &TypeEnv,
+            location: crate::location::Location,
+        ) -> (Self::Out, Type) {
+            match (&self, &*expected) {
+                (_, _) => {
+                    let (elab_expression, expression_type) = self.infer(env.clone(), location);
+                    unification::unify(expression_type.clone(), expected, env, location);
+                    (elab_expression, expression_type)
+                }
+            }
+        }
+    }
 }
 
 pub trait Declare {
@@ -1022,7 +1058,7 @@ pub trait Define {
 
 impl Declare for desugared::Data {
     fn declare(&self, mut env: TypeEnv) -> TypeEnv {
-        let name = self.name.name.clone();
+        let name = self.name.inner;
         let arity = self.generics.len();
         env.datatypes.insert_mut(
             name,
@@ -1037,7 +1073,7 @@ impl Declare for desugared::Data {
 
 impl Declare for desugared::Signature {
     fn declare(&self, env: TypeEnv) -> TypeEnv {
-        let name = self.name.name.clone();
+        let name = self.name.inner;
         let mut next_env = env.clone();
 
         // let mut env_mut = env.clone();
@@ -1045,7 +1081,7 @@ impl Declare for desugared::Signature {
         for (i, name) in free_variables.iter().enumerate() {
             next_env
                 .type_vars
-                .insert_mut(name.to_string(), Type::new(TypeKind::Generalized(i)));
+                .insert_mut(*name, Type::new(TypeKind::Generalized(i)));
         }
 
         // env_mut.enter_level();
@@ -1056,10 +1092,7 @@ impl Declare for desugared::Signature {
         // env_mut.leave_level();
 
         let scheme = Scheme::new(
-            free_variables
-                .into_iter()
-                .map(|var| var.to_string())
-                .collect::<Vec<_>>(),
+            free_variables.into_iter().collect::<Vec<_>>(),
             internal_type,
         );
         next_env.definitions.insert_mut(name, scheme);
@@ -1072,11 +1105,7 @@ impl Define for desugared::Data {
         let name = self.name.clone();
         let mut next_env = env.clone();
 
-        let scheme = self
-            .generics
-            .iter()
-            .map(|s| s.name.clone())
-            .collect::<Vec<_>>();
+        let scheme = self.generics.iter().map(|s| s.inner).collect::<Vec<_>>();
         let vars = scheme
             .iter()
             .enumerate()
@@ -1084,9 +1113,9 @@ impl Define for desugared::Data {
             .collect::<Vec<_>>();
 
         scheme.iter().zip(vars.clone()).for_each(|(name, t)| {
-            next_env.type_vars.insert_mut(name.clone(), t);
+            next_env.type_vars.insert_mut(*name, t);
         });
-        let return_type = Type::new(TypeKind::Generic(name.name, vars));
+        let return_type = Type::new(TypeKind::Generic(name.inner, vars));
 
         for ctor in self.constructors {
             let arity = ctor.types.len();
@@ -1103,7 +1132,7 @@ impl Define for desugared::Data {
             let scheme = Scheme::new(scheme.clone(), arrow);
             next_env
                 .constructors
-                .insert_mut(ctor.name.name, (scheme, arity));
+                .insert_mut(ctor.name.inner, (scheme, arity));
         }
         next_env
     }
@@ -1112,7 +1141,7 @@ impl Define for desugared::Data {
 impl Define for desugared::Def {
     fn define(self, env: TypeEnv) -> TypeEnv {
         let name = self.name;
-        let signature = env.definitions.get(name.as_str()).unwrap();
+        let signature = env.definitions.get(&name.inner).unwrap();
         let signature = signature.skolemize();
 
         let body_location = self.body.location;

@@ -3,13 +3,7 @@
 #[derive(Clone, Debug)]
 pub struct Symbol {
     pub location: crate::location::Location,
-    pub name: String,
-}
-
-impl Symbol {
-    pub fn as_str(&self) -> &str {
-        self.name.as_str()
-    }
+    pub inner: crate::symbol::Sym,
 }
 
 impl parse::Op {
@@ -261,15 +255,15 @@ pub mod desugared {
     }
 
     impl Type {
-        pub fn free_variables(&self) -> indexmap::IndexSet<&str> {
+        pub fn free_variables(&self) -> indexmap::IndexSet<crate::symbol::Sym> {
             self.kind.free_variables()
         }
     }
 
     impl TypeKind {
-        pub fn free_variables(&self) -> indexmap::IndexSet<&str> {
+        pub fn free_variables(&self) -> indexmap::IndexSet<crate::symbol::Sym> {
             match self {
-                TypeKind::Var(symbol) => indexmap::indexset![symbol.as_str()],
+                TypeKind::Var(symbol) => indexmap::indexset![symbol.inner],
                 TypeKind::Generic(_, items) => {
                     items.iter().flat_map(|i| i.free_variables()).collect()
                 }
@@ -300,10 +294,10 @@ pub mod elaborated {
 
     #[derive(Clone, Debug)]
     pub enum CaseTree {
-        Leaf(checker::exhaustive::Row<checker::exhaustive::Case>),
+        Leaf(usize),
         Switch(
-            String,
-            Vec<(Case, Vec<String>, CaseTree)>,
+            checker::exhaustive::Occurrence,
+            Vec<(Case, CaseTree)>,
             Option<Box<CaseTree>>,
         ),
     }
@@ -312,7 +306,7 @@ pub mod elaborated {
     pub enum Case {
         Number(i32),
         String(String),
-        Constructor(String, usize),
+        Constructor(crate::symbol::Sym, usize),
     }
 
     #[derive(Debug)]

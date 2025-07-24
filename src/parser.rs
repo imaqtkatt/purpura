@@ -431,7 +431,7 @@ impl<'a> Parser<'a> {
         let ident = self.expect(lexer::TokenKind::LowerIdent)?;
         Ok(tree::Symbol {
             location: ident.location,
-            name: ident.lexeme,
+            inner: crate::symbol::Sym::new(&ident.lexeme),
         })
     }
 
@@ -439,7 +439,7 @@ impl<'a> Parser<'a> {
         let ident = self.expect(lexer::TokenKind::UpperIdent)?;
         Ok(tree::Symbol {
             location: ident.location,
-            name: ident.lexeme,
+            inner: crate::symbol::Sym::new(&ident.lexeme),
         })
     }
 
