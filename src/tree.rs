@@ -110,6 +110,18 @@ pub mod parse {
     }
 
     #[derive(Debug)]
+    pub struct Pred {
+        pub id: Symbol,
+        pub r#type: Type,
+    }
+
+    #[derive(Debug)]
+    pub struct Qualified {
+        pub preds: Vec<Pred>,
+        pub r#type: Type,
+    }
+
+    #[derive(Debug)]
     pub struct Data {
         pub name: Symbol,
         pub generics: Vec<Symbol>,
@@ -125,7 +137,8 @@ pub mod parse {
     #[derive(Debug)]
     pub struct Sig {
         pub name: Symbol,
-        pub r#type: Type,
+        // pub r#type: Type,
+        pub r#type: Qualified,
     }
 
     #[derive(Debug)]
@@ -217,6 +230,18 @@ pub mod desugared {
         pub kind: Box<TypeKind>,
     }
 
+    #[derive(Clone, Debug)]
+    pub struct Pred {
+        pub id: Symbol,
+        pub r#type: Type,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct Qualified {
+        pub preds: Vec<Pred>,
+        pub r#type: Type,
+    }
+
     #[derive(Debug)]
     pub enum TopLevel {
         Data(Data),
@@ -239,7 +264,7 @@ pub mod desugared {
     #[derive(Debug)]
     pub struct Signature {
         pub name: Symbol,
-        pub r#type: Type,
+        pub r#type: Qualified,
     }
 
     #[derive(Debug)]
@@ -269,6 +294,24 @@ pub mod desugared {
                 }
                 TypeKind::Arrow(a, b) => [a, b].iter().flat_map(|i| i.free_variables()).collect(),
             }
+        }
+    }
+
+    impl Pred {
+        pub fn free_variables(&self) -> indexmap::IndexSet<crate::symbol::Sym> {
+            self.r#type.free_variables()
+        }
+    }
+
+    impl Qualified {
+        pub fn free_variables(&self) -> indexmap::IndexSet<crate::symbol::Sym> {
+            let preds = self
+                .preds
+                .iter()
+                .flat_map(|p| p.free_variables())
+                .collect::<indexmap::IndexSet<crate::symbol::Sym>>();
+            let r#type = self.r#type.free_variables();
+            preds.union(&r#type).copied().collect()
         }
     }
 }

@@ -182,7 +182,7 @@ pub fn desugar_data(data: parse::Data) -> desugared::Data {
 pub fn desugar_signature(sig: parse::Sig) -> desugared::Signature {
     desugared::Signature {
         name: sig.name,
-        r#type: desugar_type(sig.r#type),
+        r#type: desugar_qualified(sig.r#type),
     }
 }
 
@@ -296,6 +296,19 @@ pub fn desugar_type(r#type: parse::Type) -> desugared::Type {
         location,
         kind: Box::new(kind),
     }
+}
+
+pub fn desugar_pred(pred: parse::Pred) -> desugared::Pred {
+    desugared::Pred {
+        id: pred.id,
+        r#type: desugar_type(pred.r#type),
+    }
+}
+
+pub fn desugar_qualified(qual: parse::Qualified) -> desugared::Qualified {
+    let preds = qual.preds.into_iter().map(desugar_pred).collect();
+    let r#type = desugar_type(qual.r#type);
+    desugared::Qualified { preds, r#type }
 }
 
 pub fn desugar_statement(statement: parse::Statement) -> desugared::Statement {

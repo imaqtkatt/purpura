@@ -551,6 +551,25 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
+    fn parse_qualified(&mut self) -> ParseResult<parse::Qualified> {
+        let mut preds = vec![];
+        if self.is(lexer::TokenKind::LBrace) {
+            self.expect(lexer::TokenKind::LBrace)?;
+            while !self.is(lexer::TokenKind::RBrace) {
+                preds.push(self.parse_pred()?);
+            }
+            self.expect(lexer::TokenKind::RBrace)?;
+        }
+        let r#type = self.parse_type()?;
+        Ok(parse::Qualified { preds, r#type })
+    }
+
+    fn parse_pred(&mut self) -> ParseResult<parse::Pred> {
+        let id = self.parse_lower_symbol()?;
+        let r#type = self.parse_type()?;
+        Ok(parse::Pred { id, r#type })
+    }
+
     fn parse_data(&mut self) -> ParseResult<parse::Data> {
         self.expect(lexer::TokenKind::Data)?;
         let name = self.parse_upper_symbol()?;
@@ -619,7 +638,7 @@ impl<'a> Parser<'a> {
 
         self.expect(lexer::TokenKind::Colon)?;
 
-        let r#type = self.parse_type()?;
+        let r#type = self.parse_qualified()?;
 
         Ok(parse::Sig { name, r#type })
     }

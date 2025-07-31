@@ -167,6 +167,29 @@ impl TypeKind {
 }
 
 #[derive(Clone, Debug)]
+pub struct Pred(Sym, Type);
+
+impl Pred {
+    fn instantiate(self, subs: &[Type]) -> Pred {
+        Pred(self.0, self.1.instantiate(subs))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Qualified(Vec<Pred>, Type);
+
+impl Qualified {
+    fn instantiate(self, subs: &[Type]) -> Qualified {
+        let preds = self.0.into_iter().map(|p| p.instantiate(subs)).collect();
+        let r#type = self.1.instantiate(subs);
+        Qualified(preds, r#type)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Assumption(Sym, Scheme);
+
+#[derive(Clone, Debug)]
 pub struct Scheme {
     pub binds: Vec<Sym>,
     pub r#type: Type,
@@ -696,7 +719,7 @@ impl Infer for desugared::ExpressionKind {
                 let (elab_patterns, elab_branches) = elab_arms.into_iter().unzip();
 
                 match exhaustive::is_exhaustive(&env, elab_patterns, vec![scrutinee_type.clone()]) {
-                    exhaustive::Witness::Exhaustive(case_tree) => {
+                    Ok(case_tree) => {
                         println!("case_tree = {case_tree:#?}");
                         let elab = elaborated::ExpressionKind::Match(
                             elab_scrutinee,
@@ -705,7 +728,7 @@ impl Infer for desugared::ExpressionKind {
                         );
                         (elab, return_type)
                     }
-                    exhaustive::Witness::NonExhaustive(row) => {
+                    Err(row) => {
                         env.reporter.report(errors::NonExhaustive {
                             next_case: row.first().clone(),
                             location,
@@ -1086,6 +1109,7 @@ impl Declare for desugared::Signature {
 
         // env_mut.enter_level();
         let ((), internal_type) = self
+            .r#type
             .r#type
             .clone()
             .infer(next_env.clone(), self.name.location);

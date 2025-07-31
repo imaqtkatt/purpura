@@ -72,7 +72,7 @@ impl<T: Clone> Row<T> {
         row
     }
 
-    fn preppend(&self, item: T) -> Self {
+    fn prepend(&self, item: T) -> Self {
         let mut row = self.clone();
         row.inner.push_front(item);
         row
@@ -169,6 +169,11 @@ impl Row<Case> {
             None
         }
     }
+
+    fn expand(self, name: crate::symbol::Sym, size: usize) -> Self {
+        let (left, right) = self.split(size);
+        right.prepend(Case::Constructor(name, left.inner.into_iter().collect()))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -221,30 +226,15 @@ impl Matrix<Case> {
     }
 }
 
-#[derive(Debug)]
-pub enum Witness {
-    Exhaustive(elaborated::CaseTree),
-    NonExhaustive(Row<Case>),
-}
+struct Witness;
 
 impl Witness {
-    fn prepend(self, case: Case) -> Self {
-        let Witness::NonExhaustive(row) = self else {
-            return self;
-        };
-
-        Witness::NonExhaustive(row.preppend(case))
+    fn prepend(slf: ProblemResult, case: Case) -> ProblemResult {
+        slf.map_err(|row| row.prepend(case))
     }
 
-    fn expand(self, name: crate::symbol::Sym, size: usize) -> Self {
-        let Witness::NonExhaustive(row) = self else {
-            return self;
-        };
-
-        let (left, right) = row.split(size);
-
-        let row = right.preppend(Case::Constructor(name, left.inner.into_iter().collect()));
-        Self::NonExhaustive(row)
+    fn expand(slf: ProblemResult, name: crate::symbol::Sym, size: usize) -> ProblemResult {
+        slf.map_err(|row| row.expand(name, size))
     }
 }
 
@@ -286,7 +276,7 @@ pub fn is_exhaustive(
     env: &checker::TypeEnv,
     patterns: Vec<elaborated::Pattern>,
     types: Vec<checker::Type>,
-) -> Witness {
+) -> ProblemResult {
     let mut matrix = vec![];
     for (index, pattern) in patterns.into_iter().enumerate() {
         if let Some(case) = from_pattern(pattern) {
@@ -317,6 +307,8 @@ pub fn is_exhaustive(
     .exhaustive(env)
 }
 
+type ProblemResult = std::result::Result<elaborated::CaseTree, Row<Case>>;
+
 impl Problem {
     fn specialize(
         self,
@@ -325,7 +317,7 @@ impl Problem {
         cases: Vec<Case>,
         case: Case,
         occurrences: Vec<Occurrence>,
-    ) -> Witness {
+    ) -> ProblemResult {
         Self {
             types: self.types.inline(types.into()),
             case: self.case.inline(cases.into()),
@@ -344,11 +336,11 @@ impl Problem {
         }
     }
 
-    fn exhaustive(self, env: &checker::TypeEnv) -> Witness {
+    fn exhaustive(self, env: &checker::TypeEnv) -> ProblemResult {
         if self.matrix.is_empty() {
-            Witness::NonExhaustive(self.case)
+            Err(self.case)
         } else if let Some(row) = self.matrix.is_irrefutable() {
-            Witness::Exhaustive(elaborated::CaseTree::Leaf(row.index))
+            Ok(elaborated::CaseTree::Leaf(row.index))
         } else {
             self.match_exhaustiveness(env)
         }
@@ -373,20 +365,20 @@ impl Problem {
         }
     }
 
-    fn specialize_wildcard(self, env: &checker::TypeEnv) -> Witness {
-        self.default().exhaustive(env).prepend(Case::Wildcard)
+    fn specialize_wildcard(self, env: &checker::TypeEnv) -> ProblemResult {
+        Witness::prepend(self.default().exhaustive(env), Case::Wildcard)
     }
 
-    fn match_exhaustiveness(self, env: &checker::TypeEnv) -> Witness {
+    fn match_exhaustiveness(self, env: &checker::TypeEnv) -> ProblemResult {
         let case = self.case.first();
         let current = self.types.first().clone().force();
 
         match (case, &*current) {
             (Case::Wildcard, t) if t == &*env.number_type => {
-                self.split_numbers(env).prepend(Case::Wildcard)
+                Witness::prepend(self.split_numbers(env), Case::Wildcard)
             }
             (Case::Wildcard, t) if t == &*env.string_type => {
-                self.split_strings(env).prepend(Case::Wildcard)
+                Witness::prepend(self.split_strings(env), Case::Wildcard)
             }
             // TODO: make Number and String as internal types instead of generics?
             (Case::Wildcard, checker::TypeKind::Generic(name, types))
@@ -420,7 +412,7 @@ impl Problem {
         env: &checker::TypeEnv,
         name: crate::symbol::Sym,
         types: Vec<checker::Type>,
-    ) -> Witness {
+    ) -> ProblemResult {
         if self.matrix.is_wildcard() {
             self.specialize_wildcard(env)
         } else {
@@ -432,10 +424,10 @@ impl Problem {
                 Completeness::Incomplete(Finitude::Finite(names), missing) => {
                     let first = missing.into_iter().collect::<Vec<_>>()[0];
                     let case = self.synthetize(env, first);
-                    self.clone().split(env, names, types, false).prepend(case)
+                    Witness::prepend(self.clone().split(env, names, types, false), case)
                 }
                 Completeness::Incomplete(Finitude::Infinite, _) => {
-                    self.specialize_wildcard(env).prepend(Case::Wildcard)
+                    Witness::prepend(self.specialize_wildcard(env), Case::Wildcard)
                 }
             }
         }
@@ -449,7 +441,7 @@ impl Problem {
         names: indexmap::IndexSet<crate::symbol::Sym>,
         types: Vec<checker::Type>,
         is_complete: bool,
-    ) -> Witness {
+    ) -> ProblemResult {
         let scrutinee = self.occurrences.first().clone();
         let mut cases = vec![];
 
@@ -468,25 +460,18 @@ impl Problem {
                 occurrences,
             );
 
-            match witness {
-                Witness::Exhaustive(case_tree) => {
-                    let case = elaborated::Case::Constructor(name, *arity);
-                    cases.push((case, case_tree))
-                }
-                Witness::NonExhaustive(_) => return witness.expand(name, *arity),
-            }
+            let case_tree = Witness::expand(witness, name.clone(), *arity)?;
+            cases.push((elaborated::Case::Constructor(name, *arity), case_tree));
         }
 
         let default = if is_complete {
             None
         } else {
-            match self.default().exhaustive(env) {
-                Witness::Exhaustive(case_tree) => Some(Box::new(case_tree)),
-                Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
-            }
+            let case_tree = self.default().exhaustive(env)?;
+            Some(Box::new(case_tree))
         };
 
-        Witness::Exhaustive(elaborated::CaseTree::Switch(scrutinee, cases, default))
+        Ok(elaborated::CaseTree::Switch(scrutinee, cases, default))
     }
 
     fn specialize_constructor(
@@ -496,12 +481,12 @@ impl Problem {
         cases: Vec<Case>,
         types: Vec<checker::Type>,
         occurrences: Vec<Occurrence>,
-    ) -> Witness {
+    ) -> ProblemResult {
         let case = Case::Constructor(name, cases.clone());
         self.specialize(env, types, cases, case, occurrences)
     }
 
-    fn split_numbers(self, env: &checker::TypeEnv) -> Witness {
+    fn split_numbers(self, env: &checker::TypeEnv) -> ProblemResult {
         let scrutinee = self.occurrences.first().clone();
         let numbers = self.matrix.numbers();
 
@@ -514,23 +499,16 @@ impl Problem {
                 .clone()
                 .specialize(env, vec![], vec![], case, occurrences);
 
-            match witness {
-                Witness::Exhaustive(case_tree) => {
-                    cases.push((elaborated::Case::Number(n), case_tree));
-                }
-                Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
-            }
+            let case_tree = witness?;
+            cases.push((elaborated::Case::Number(n), case_tree));
         }
 
-        let default = match self.default().exhaustive(env) {
-            Witness::Exhaustive(case_tree) => Some(Box::new(case_tree)),
-            Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
-        };
+        let default = Some(Box::new(self.default().exhaustive(env)?));
 
-        Witness::Exhaustive(elaborated::CaseTree::Switch(scrutinee, cases, default))
+        Ok(elaborated::CaseTree::Switch(scrutinee, cases, default))
     }
 
-    fn split_strings(self, env: &checker::TypeEnv) -> Witness {
+    fn split_strings(self, env: &checker::TypeEnv) -> ProblemResult {
         let scrutinee = self.occurrences.first().clone();
         let strings = self.matrix.strings();
 
@@ -543,20 +521,12 @@ impl Problem {
                 .clone()
                 .specialize(env, vec![], vec![], case, occurrences);
 
-            match witness {
-                Witness::Exhaustive(case_tree) => {
-                    let case = elaborated::Case::String(s);
-                    cases.push((case, case_tree));
-                }
-                Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
-            }
+            let case_tree = witness?;
+            cases.push((elaborated::Case::String(s), case_tree));
         }
 
-        let default = match self.default().exhaustive(env) {
-            Witness::Exhaustive(case_tree) => Some(Box::new(case_tree)),
-            Witness::NonExhaustive(row) => return Witness::NonExhaustive(row),
-        };
+        let default = Some(Box::new(self.default().exhaustive(env)?));
 
-        Witness::Exhaustive(elaborated::CaseTree::Switch(scrutinee, cases, default))
+        Ok(elaborated::CaseTree::Switch(scrutinee, cases, default))
     }
 }
